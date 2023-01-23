@@ -1,15 +1,20 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"io"
+	"math/big"
+	"net"
 	"os"
+	"os/signal"
+	"path/filepath"
 	"strings"
 
 	"github.com/holiman/billy"
 	"github.com/urfave/cli/v2"
-	"math/big"
 )
 
 var (
@@ -60,6 +65,11 @@ var (
 		Usage:     "Delete a blob",
 		ArgsUsage: "<key>",
 	}
+	openCommand = &cli.Command{
+		Action: open,
+		Name:   "open",
+		Usage:  "Open a database, and keep open until ctrl-c.",
+	}
 )
 
 func main() {
@@ -73,6 +83,7 @@ func main() {
 		getCommand,
 		get64Command,
 		delCommand,
+		openCommand,
 	}
 	app.Flags = []cli.Flag{
 		pathFlag,
@@ -191,4 +202,106 @@ func del(ctx *cli.Context) error {
 		return fmt.Errorf("failed to parse key from '%s'", key)
 	}
 	return db.Delete(k.Uint64())
+}
+
+func startIpc(endpoint string) (net.Listener, error) {
+	// Ensure the IPC path exists and remove any previous leftover
+	if err := os.MkdirAll(filepath.Dir(endpoint), 0751); err != nil {
+		return nil, err
+	}
+	os.Remove(endpoint)
+	l, err := net.Listen("unix", endpoint)
+	if err != nil {
+		return nil, err
+	}
+	os.Chmod(endpoint, 0600)
+	return l, nil
+}
+
+// serveCodec handles the request from the socket
+// Format:
+// 1. PUT string(base64 data) -> string(id)
+// 2. GET string(id) -> string(base64 data)
+// 2. DEL string(id) -> -
+func serveCodec(conn net.Conn, db billy.Database) {
+	in := bufio.NewScanner(conn)
+	for in.Scan() {
+		var verb string
+		line := in.Bytes()
+		if len(line) >= 4 {
+			verb = string(line[:4])
+		}
+		switch verb {
+		case "PUT ":
+			in := bytes.NewReader(line[4:])
+			dec := base64.NewDecoder(base64.StdEncoding, in)
+			data, err := io.ReadAll(dec)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				continue
+			}
+			id := db.Put(data)
+			conn.Write([]byte(fmt.Sprintf("%#08x\n", id)))
+		case "GET ":
+			k, ok := big.NewInt(0).SetString(string(line[4:]), 0)
+			if !ok {
+				fmt.Fprintf(os.Stderr, "failed to parse key")
+				continue
+			}
+			if !k.IsUint64() {
+				fmt.Fprintf(os.Stderr, "failed to parse key (oob)")
+				continue
+			}
+			data, err := db.Get(k.Uint64())
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				continue
+			}
+			enc := base64.NewEncoder(base64.StdEncoding, conn)
+			enc.Write(data)
+			enc.Close()
+			conn.Write([]byte("\n"))
+		case "DEL ":
+			k, ok := big.NewInt(0).SetString(string(line[4:]), 0)
+			if !ok {
+				fmt.Fprintf(os.Stderr, "failed to parse key")
+				continue
+			}
+			if !k.IsUint64() {
+				fmt.Fprintf(os.Stderr, "failed to parse key (oob)")
+				continue
+			}
+			db.Delete(k.Uint64())
+		default:
+			fmt.Fprintf(os.Stderr, "bad verb\n")
+		}
+	}
+}
+
+func open(ctx *cli.Context) error {
+	db, err := openDb(ctx)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	endpoint := filepath.Join(ctx.String("path"), "billy.ipc")
+	l, err := startIpc(endpoint)
+	if err != nil {
+		return err
+	}
+	go func(l net.Listener, db billy.Database) error {
+		// ServeListener accepts connections on l, serving JSON-RPC on them.
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				return err
+			}
+			go serveCodec(conn, db)
+		}
+	}(l, db)
+	abortChan := make(chan os.Signal, 1)
+	signal.Notify(abortChan, os.Interrupt)
+	<-abortChan
+	fmt.Fprintf(os.Stderr, "Shutting down\n")
+	return nil
 }
