@@ -69,6 +69,17 @@ var (
 		},
 		Description: `Load a blob (output base64)`,
 	}
+	delCommand = &cli.Command{
+		Action: del,
+		Name:   "del",
+		Usage:  "Delete a blob",
+		Flags: []cli.Flag{
+			pathFlag,
+			minFlag,
+			maxFlag,
+		},
+		Description: `Load a blob`,
+	}
 )
 
 func main() {
@@ -83,6 +94,7 @@ func main() {
 		put64Command,
 		getCommand,
 		get64Command,
+		delCommand,
 	}
 
 	if err := app.Run(os.Args); err != nil {
@@ -145,7 +157,7 @@ func doPut(ctx *cli.Context, data []byte) error {
 		return fmt.Errorf("data too large, max %d, was %d", max, len(data))
 	}
 	id := db.Put([]byte(data))
-	fmt.Printf("%#08x %d", id, id)
+	fmt.Printf("%#08x %d\n", id, id)
 	return nil
 }
 
@@ -187,4 +199,21 @@ func doGet(ctx *cli.Context, outputFn func([]byte) error) error {
 		return err
 	}
 	return outputFn(data)
+}
+
+func del(ctx *cli.Context) error {
+	db, err := openDb(ctx)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	key := ctx.Args().First()
+	k, ok := big.NewInt(0).SetString(key, 0)
+	if !ok {
+		return fmt.Errorf("failed to parse key from '%s'", key)
+	}
+	if !k.IsUint64() {
+		return fmt.Errorf("failed to parse key from '%s'", key)
+	}
+	return db.Delete(k.Uint64())
 }
