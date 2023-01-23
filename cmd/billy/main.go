@@ -29,65 +29,43 @@ var (
 		Value: 1024 * 1024,
 	}
 	putCommand = &cli.Command{
-		Action:    put,
-		Name:      "put",
-		Usage:     "Store a blob",
-		ArgsUsage: "",
-		Flags: []cli.Flag{
-			pathFlag,
-			minFlag,
-			maxFlag,
-		},
+		Action:      put,
+		Name:        "put",
+		Usage:       "Store a blob (raw input)",
+		ArgsUsage:   "<data>",
 		Description: `Store a blob`,
 	}
 	put64Command = &cli.Command{
-		Action:      put64,
-		Name:        "put64",
-		Usage:       "Store a blob (base64)",
-		Flags:       []cli.Flag{},
-		Description: `Store a blob (base64)`,
+		Action:    put64,
+		Name:      "put64",
+		Usage:     "Store a blob (b64 input)",
+		ArgsUsage: "<base64-encoded data>",
+		Flags:     []cli.Flag{},
 	}
 	getCommand = &cli.Command{
-		Action: get,
-		Name:   "get",
-		Usage:  "Get a blob",
-		Flags: []cli.Flag{
-			pathFlag,
-			minFlag,
-			maxFlag,
-		},
-		Description: `Load a blob`,
+		Action:    get,
+		Name:      "get",
+		Usage:     "Load a blob (raw output)",
+		ArgsUsage: "<key>",
 	}
 	get64Command = &cli.Command{
-		Action: get64,
-		Name:   "get64",
-		Usage:  "Get a blob (output base64)",
-		Flags: []cli.Flag{
-			pathFlag,
-			minFlag,
-			maxFlag,
-		},
-		Description: `Load a blob (output base64)`,
+		Action:    get64,
+		Name:      "get64",
+		Usage:     "Load a blob (b64 output)",
+		ArgsUsage: "<key>",
 	}
 	delCommand = &cli.Command{
-		Action: del,
-		Name:   "del",
-		Usage:  "Delete a blob",
-		Flags: []cli.Flag{
-			pathFlag,
-			minFlag,
-			maxFlag,
-		},
-		Description: `Load a blob`,
+		Action:    del,
+		Name:      "del",
+		Usage:     "Delete a blob",
+		ArgsUsage: "<key>",
 	}
 )
 
 func main() {
-
 	app := cli.NewApp()
-	app.EnableBashCompletion = true
+	app.Usage = "A command-line utility to interact with a billy database"
 	app.Copyright = "Copyright 2023 The Billy Authors"
-	app.Action = about
 	app.Commands = []*cli.Command{
 		// See chaincmd.go:
 		putCommand,
@@ -96,19 +74,16 @@ func main() {
 		get64Command,
 		delCommand,
 	}
-
+	app.Flags = []cli.Flag{
+		pathFlag,
+		minFlag,
+		maxFlag,
+	}
 	if err := app.Run(os.Args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 
-}
-
-func about(ctx *cli.Context) error {
-	fmt.Printf(`
-This is a simple command line utilty to interact with Billy.
-`)
-	return nil
 }
 
 func openDb(ctx *cli.Context) (billy.Database, error) {
