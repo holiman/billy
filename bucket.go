@@ -351,10 +351,11 @@ func (bucket *Bucket) compact(onData onBucketDataFn) {
 		return slot
 	}
 	prevData := func(slot, gap uint64) uint64 {
-		for ; slot > 0; slot-- {
+		for ; slot > gap && slot > 0; slot-- {
 			if size := readSlot(slot); size != 0 {
 				// We've found a slot of data. Copy it to the gap
 				writeBuf(gap)
+				fmt.Printf("Writing data from %d to %d\n", slot, gap)
 				if onData != nil {
 					onData(gap, buf[itemHeaderSize:itemHeaderSize+size])
 				}
@@ -381,18 +382,24 @@ func (bucket *Bucket) compact(onData onBucketDataFn) {
 		return
 	}
 	dataSlot--
+	firstTail := bucket.tail
 	for gapSlot <= dataSlot {
+		if gapSlot > 0 {
+			fmt.Printf("Searching for next gap after %d, tail %d\n", gapSlot, bucket.tail)
+		}
 		gapSlot = nextGap(gapSlot)
 		if gapSlot >= bucket.tail {
 			break // done here
 		}
 		dataSlot = prevData(dataSlot, gapSlot)
+		// dataSlot is now the empty area
+		bucket.tail = dataSlot
 		gapSlot++
 		dataSlot--
+		fmt.Printf("gapSlot: %v, dataSlot: %v\n", gapSlot, dataSlot)
 	}
-	if gapSlot >= dataSlot {
+	if firstTail != bucket.tail {
 		// Some gc was performed. gapSlot is the first empty slot now
-		bucket.tail = gapSlot
 		bucket.f.Truncate(int64(bucket.tail * uint64(bucket.slotSize)))
 	}
 }

@@ -323,6 +323,56 @@ func TestGapHeap(t *testing.T) {
 
 }
 
+func TestCompaction2(t *testing.T) {
+	t.Cleanup(func() {
+		os.RemoveAll("./.testCompaction2")
+	})
+	/// Now open them as buckets
+	openAndStore := func(data string) {
+		a, err := openBucketAs("./", ".testCompaction2", 10, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a.Put([]byte(data))
+		a.Close()
+	}
+	openAndIterate := func() string {
+		var data []byte
+		openBucketAs("./", ".testCompaction2", 10, func(slot uint64, x []byte) {
+			data = append(data, x...)
+		})
+		return string(data)
+	}
+	openAndDel := func(deletes ...int) {
+		a, err := openBucketAs("./", ".testCompaction2", 10, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, id := range deletes {
+			a.Delete(uint64(id))
+		}
+		a.Close()
+	}
+	openAndStore("000000")
+	openAndStore("111111")
+	openAndStore("222222")
+	openAndStore("333333")
+	openAndStore("444444")
+	if have, want := openAndIterate(), "000000111111222222333333444444"; have != want {
+		t.Fatalf("have %v want %v", have, want)
+	}
+	openAndDel(1)
+	// If we delete 1, then the last item should be moved into the gap
+	if have, want := openAndIterate(), "000000444444222222333333"; have != want {
+		t.Fatalf("have %v want %v", have, want)
+	}
+	openAndDel(1, 2)
+	// If we delete 1, then the last item should be moved into the gap
+	if have, want := openAndIterate(), "000000333333"; have != want {
+		t.Fatalf("have %v want %v", have, want)
+	}
+}
+
 // TODO tests
 // - Test Put / Delete in parallel
 // - Test that simultaneous filewrites to different parts of the file don't cause problems
