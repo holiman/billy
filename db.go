@@ -50,9 +50,36 @@ func Open(path string, smallest, max int, onData OnDataFn) (Database, error) {
 	if smallest >= max {
 		return nil, fmt.Errorf("Bad options, min (%d) >= max (%d)", smallest, max)
 	}
+	v := smallest
+	var slotSizeFn = func() (int, bool) {
+		ret := v
+		v += v
+		return ret, ret >= max
+	}
+	return OpenCustom(path, slotSizeFn, onData)
+}
+
+// OpenCustom opens a (new or eixsting) database, with configurable limits. The
+// given slotSizeFn will be used to determine both the bucket sizes and the number
+// of buckets.
+// The function must yield values in increasing order.
+// If bucket already exists, they are opened and read, in order to populate the
+// internal gap-list.
+// While doing so, it's a good opportunity for the caller to read the data out,
+// (which is probably desirable), which can be done using the optional onData callback.
+func OpenCustom(path string, slotSizeFn func() (int, bool), onData OnDataFn) (Database, error) {
 	db := &DB{}
-	for v := smallest; v < max; v += v {
-		bucket, err := openBucket(path, uint32(v), wrapBucketDataFn(len(db.buckets), onData))
+	prevSlotSize := 0
+	for {
+		slotSize, done := slotSizeFn()
+		if done {
+			break
+		}
+		if slotSize <= prevSlotSize {
+			return nil, fmt.Errorf("slot sizes must be in increasing order")
+		}
+		prevSlotSize = slotSize
+		bucket, err := openBucket(path, uint32(slotSize), wrapBucketDataFn(len(db.buckets), onData))
 		if err != nil {
 			db.Close() // Close buckets
 			return nil, err
