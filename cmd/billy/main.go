@@ -97,9 +97,24 @@ func main() {
 
 }
 
-func openDb(ctx *cli.Context) (billy.Database, error) {
-	p := ctx.String("path")
-	db, err := billy.Open(p, ctx.Int("min"), ctx.Int("max"), func(key uint64, data []byte) {
+type dbParams struct {
+	path string
+	min  int
+	max  int
+}
+
+func openDb(ctx *cli.Context) (billy.Database, *dbParams, error) {
+	opts := &dbParams{
+		path: ctx.String("path"),
+		min:  ctx.Int("min"),
+		max:  ctx.Int("max"),
+	}
+	db, err := doOpenDb(opts)
+	return db, opts, err
+}
+
+func doOpenDb(opts *dbParams) (billy.Database, error) {
+	db, err := billy.Open(opts.path, opts.min, opts.max, func(key uint64, data []byte) {
 		var d string
 		if len(data) > 100 {
 			d = fmt.Sprintf("%q...", data[:100])
@@ -109,7 +124,7 @@ func openDb(ctx *cli.Context) (billy.Database, error) {
 		fmt.Fprintf(os.Stderr, "%#08x %s\n", key, d)
 	})
 	if err == nil {
-		fmt.Fprintf(os.Stderr, "Opened %v\n", p)
+		fmt.Fprintf(os.Stderr, "Opened %v\n", opts.path)
 	}
 	return db, err
 }
@@ -130,7 +145,7 @@ func put64(ctx *cli.Context) error {
 }
 
 func doPut(ctx *cli.Context, data []byte) error {
-	db, err := openDb(ctx)
+	db, _, err := openDb(ctx)
 	if err != nil {
 		return err
 	}
@@ -166,7 +181,7 @@ func get64(ctx *cli.Context) error {
 }
 
 func doGet(ctx *cli.Context, outputFn func([]byte) error) error {
-	db, err := openDb(ctx)
+	db, _, err := openDb(ctx)
 	if err != nil {
 		return err
 	}
@@ -188,7 +203,7 @@ func doGet(ctx *cli.Context, outputFn func([]byte) error) error {
 }
 
 func del(ctx *cli.Context) error {
-	db, err := openDb(ctx)
+	db, _, err := openDb(ctx)
 	if err != nil {
 		return err
 	}
@@ -222,8 +237,9 @@ func startIpc(endpoint string) (net.Listener, error) {
 // Format:
 // 1. PUT string(base64 data) -> string(id)
 // 2. GET string(id) -> string(base64 data)
-// 2. DEL string(id) -> -
-func serveCodec(conn net.Conn, db billy.Database) {
+// 3. DEL string(id) -> -
+// 4. RST -> - (closes and reopens the database)
+func serveCodec(conn net.Conn, db billy.Database, opts *dbParams) {
 	in := bufio.NewScanner(conn)
 	for in.Scan() {
 		var verb string
@@ -272,6 +288,15 @@ func serveCodec(conn net.Conn, db billy.Database) {
 				continue
 			}
 			db.Delete(k.Uint64())
+		case "RST ":
+			// Restart it
+			db.Close()
+			var err error
+			db, err = doOpenDb(opts)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				continue
+			}
 		default:
 			fmt.Fprintf(os.Stderr, "bad verb\n")
 		}
@@ -279,7 +304,7 @@ func serveCodec(conn net.Conn, db billy.Database) {
 }
 
 func open(ctx *cli.Context) error {
-	db, err := openDb(ctx)
+	db, opts, err := openDb(ctx)
 	if err != nil {
 		return err
 	}
@@ -289,16 +314,19 @@ func open(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	go func(l net.Listener, db billy.Database) error {
+	defer func() {
+		os.Remove(endpoint)
+	}()
+	go func(l net.Listener, db billy.Database, opts *dbParams) error {
 		// ServeListener accepts connections on l, serving JSON-RPC on them.
 		for {
 			conn, err := l.Accept()
 			if err != nil {
 				return err
 			}
-			go serveCodec(conn, db)
+			go serveCodec(conn, db, opts)
 		}
-	}(l, db)
+	}(l, db, opts)
 	abortChan := make(chan os.Signal, 1)
 	signal.Notify(abortChan, os.Interrupt)
 	<-abortChan
