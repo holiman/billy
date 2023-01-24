@@ -81,7 +81,7 @@ func (db *DB) Put(data []byte) uint64 {
 
 // Get retrieves the data stored at the given key.
 func (db *DB) Get(key uint64) ([]byte, error) {
-	id := int(key >> 24)
+	id := int(key>>24) & 0xffff
 	return db.buckets[id].Get(key & 0x00FFFFFF)
 }
 
@@ -90,7 +90,7 @@ func (db *DB) Get(key uint64) ([]byte, error) {
 // from doing Get(key) is undefined -- it may return the same data, or some other
 // data, or fail with an error.
 func (db *DB) Delete(key uint64) error {
-	id := int(key >> 24)
+	id := int(key>>24) & 0xffff
 	return db.buckets[id].Delete(key & 0x00FFFFFF)
 }
 

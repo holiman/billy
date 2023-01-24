@@ -70,3 +70,22 @@ Saying that we can't do compaction is not strictly true: there are two things th
 - Compact-on-open
   - Compact-on-open uses the fact that before the external calles is notified about the data content, we have the freedom to reorder the data, and uses this 
   period overwrite any gaps and truncate the underlying file. 
+
+
+### Data format
+
+The identifer for accessing an item, a `uint64` is composed as follows: 
+
+| bit   | range          | usage                           | 
+|-------|----------------|---------------------------------|
+| 0-23  | 24 bits, `16M` | reserved for future use         |
+| 23-39 | 16 bits, `65K` | `bucket id` - Bucket identifier |  
+| 39-63 | 24 bits, `16M` | `slotkey` - slot identifier     |  
+
+The items themselves are stored with `size` as a 32-bit big-endian encoded integer,
+followed by the item itself. The 'slack-space' after `size` is _not_ cleared, so
+might contain old data.
+
+```
+uint32: size | <data>
+```
