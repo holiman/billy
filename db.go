@@ -72,7 +72,7 @@ func (db *DB) Put(data []byte) uint64 {
 			if err != nil {
 				panic(fmt.Sprintf("Error in Put: %v\n", err))
 			}
-			slot |= uint64(i) << 24
+			slot |= uint64(i) << 28
 			return slot
 		}
 	}
@@ -81,8 +81,8 @@ func (db *DB) Put(data []byte) uint64 {
 
 // Get retrieves the data stored at the given key.
 func (db *DB) Get(key uint64) ([]byte, error) {
-	id := int(key>>24) & 0xffff
-	return db.buckets[id].Get(key & 0x00FFFFFF)
+	id := int(key>>28) & 0xfff
+	return db.buckets[id].Get(key & 0x0FFFFFFF)
 }
 
 // Delete marks the data for deletion, which means it will (eventually) be
@@ -90,7 +90,7 @@ func (db *DB) Get(key uint64) ([]byte, error) {
 // from doing Get(key) is undefined -- it may return the same data, or some other
 // data, or fail with an error.
 func (db *DB) Delete(key uint64) error {
-	id := int(key>>24) & 0xffff
+	id := int(key>>28) & 0xfff
 	return db.buckets[id].Delete(key & 0x00FFFFFF)
 }
 
@@ -104,7 +104,7 @@ func wrapBucketDataFn(bucketId int, onData OnDataFn) onBucketDataFn {
 		return nil
 	}
 	return func(slot uint64, data []byte) {
-		key := slot | uint64(bucketId)<<24
+		key := slot | uint64(bucketId)<<28
 		onData(key, data)
 	}
 }

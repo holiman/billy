@@ -5,6 +5,7 @@
 package billy
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -47,5 +48,45 @@ func TestGrowFile2(t *testing.T) {
 		t.Fatal(err)
 	} else if have, want := finfo.Size(), int64(59); have != want {
 		t.Fatalf("have %d want %d", have, want)
+	}
+}
+
+func fill(data byte, size int) []byte {
+	a := make([]byte, size)
+	for i := range a {
+		a[i] = data
+	}
+	return a
+}
+
+func TestDBBasics(t *testing.T) {
+	db, err := Open(t.TempDir(), 128, 500, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k0 := db.Put(fill(0, 140))
+	k1 := db.Put(fill(1, 140))
+	k2 := db.Put(fill(2, 140))
+	k3 := db.Put(fill(3, 140))
+
+	if have, err := db.Get(k0); err != nil {
+		t.Fatal(err)
+	} else if want := fill(0, 140); !bytes.Equal(have, want) {
+		t.Fatalf(" have\n%x\n want\n%x", have, want)
+	}
+	if have, err := db.Get(k1); err != nil {
+		t.Fatal(err)
+	} else if want := fill(1, 140); !bytes.Equal(have, want) {
+		t.Fatalf(" have\n%x\n want\n%x", have, want)
+	}
+	if have, err := db.Get(k2); err != nil {
+		t.Fatal(err)
+	} else if want := fill(2, 140); !bytes.Equal(have, want) {
+		t.Fatalf(" have\n%x\n want\n%x", have, want)
+	}
+	if have, err := db.Get(k3); err != nil {
+		t.Fatal(err)
+	} else if want := fill(3, 140); !bytes.Equal(have, want) {
+		t.Fatalf(" have\n%x\n want\n%x", have, want)
 	}
 }

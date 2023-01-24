@@ -76,11 +76,11 @@ Saying that we can't do compaction is not strictly true: there are two things th
 
 The identifer for accessing an item, a `uint64` is composed as follows: 
 
-| bit   | range          | usage                           | 
-|-------|----------------|---------------------------------|
-| 0-23  | 24 bits, `16M` | reserved for future use         |
-| 23-39 | 16 bits, `65K` | `bucket id` - Bucket identifier |  
-| 39-63 | 24 bits, `16M` | `slotkey` - slot identifier     |  
+| bit   | range           | usage                           | 
+|-------|-----------------|---------------------------------|
+| 0-23  | 24 bits, `16M`  | reserved for future use         |
+| 23-35 | 12 bits, `4K`   | `bucket id` - Bucket identifier |  
+| 35-63 | 28 bits, `256M` | `slotkey` - slot identifier     |  
 
 The items themselves are stored with `size` as a 32-bit big-endian encoded integer,
 followed by the item itself. The 'slack-space' after `size` is _not_ cleared, so
