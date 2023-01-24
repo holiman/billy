@@ -19,6 +19,9 @@ import (
 const (
 	itemHeaderSize = 4
 	maxSlotSize    = 0xffffffff
+	// minSlotSize is the minimum size of a slot. It needs to fit the header,
+	// and then some actual data too.
+	minSlotSize = itemHeaderSize * 2
 )
 
 var (
@@ -48,6 +51,12 @@ type Bucket struct {
 
 // openBucketAs is mainly exposed for testing purposes
 func openBucketAs(path string, id string, slotSize uint32, onData onBucketDataFn) (*Bucket, error) {
+	if slotSize < minSlotSize {
+		return nil, fmt.Errorf("slot size %d smaller than minimum (%d)", slotSize, minSlotSize)
+	}
+	if slotSize > maxSlotSize {
+		return nil, fmt.Errorf("slot size %d larger than maximum (%d)", slotSize, maxSlotSize)
+	}
 	// Check if the path exists
 	finfo, err := os.Stat(path)
 	if err != nil {

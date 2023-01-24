@@ -42,12 +42,6 @@ type DB struct {
 // While doing so, it's a good opportunity for the caller to read the data out,
 // (which is probably desirable), which can be done using the optional onData callback.
 func Open(path string, smallest, max int, onData OnDataFn) (Database, error) {
-	if smallest < 128 {
-		return nil, fmt.Errorf("Too small slot size: %d, need at least %d", smallest, 128)
-	}
-	if smallest >= maxSlotSize {
-		return nil, fmt.Errorf("Too large slot size: %d, max is %d", smallest, maxSlotSize)
-	}
 	if smallest >= max {
 		return nil, fmt.Errorf("Bad options, min (%d) >= max (%d)", smallest, max)
 	}
@@ -71,6 +65,7 @@ func Open(path string, smallest, max int, onData OnDataFn) (Database, error) {
 func OpenCustom(path string, slotSizeFn func() (int, bool), onData OnDataFn) (Database, error) {
 	db := &DB{}
 	prevSlotSize := 0
+	prevId := 0
 	for {
 		slotSize, done := slotSizeFn()
 		if done {
@@ -86,6 +81,12 @@ func OpenCustom(path string, slotSizeFn func() (int, bool), onData OnDataFn) (Da
 			return nil, err
 		}
 		db.buckets = append(db.buckets, bucket)
+
+		if id := len(db.buckets) & 0xfff; id < prevId {
+			return nil, fmt.Errorf("too many buckets (%d)", len(db.buckets))
+		} else {
+			prevId = id
+		}
 	}
 	return db, nil
 }

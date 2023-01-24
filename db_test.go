@@ -90,3 +90,32 @@ func TestDBBasics(t *testing.T) {
 		t.Fatalf(" have\n%x\n want\n%x", have, want)
 	}
 }
+
+func TestCustomSlotSizes(t *testing.T) {
+	a := 500
+	b := 0
+	c := 0
+	for i, tt := range []func() (int, bool){
+		// Not increasing orders
+		func() (int, bool) {
+			a--
+			return a, false
+		},
+		// Too many buckets
+		func() (int, bool) {
+			b++
+			return 1024 + b, b > 10000
+		},
+		// Too small buckets
+		func() (int, bool) {
+			c++
+			return c, c > 5
+		},
+	} {
+		_, err := OpenCustom(t.TempDir(), tt, nil)
+		if err == nil {
+			t.Errorf("test %d: expected error but got none", i)
+		}
+		t.Logf("error: %v", err)
+	}
+}
