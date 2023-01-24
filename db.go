@@ -7,6 +7,7 @@ package billy
 import (
 	"fmt"
 	"io"
+	"sort"
 )
 
 type Database interface {
@@ -93,17 +94,20 @@ func OpenCustom(path string, slotSizeFn func() (int, bool), onData OnDataFn) (Da
 // for later accessing the data.
 // The data is copied by the database, and is safe to modify after the method returns
 func (db *DB) Put(data []byte) uint64 {
-	for i, b := range db.buckets {
-		if int(b.slotSize) > len(data) {
-			slot, err := b.Put(data)
-			if err != nil {
-				panic(fmt.Sprintf("Error in Put: %v\n", err))
-			}
-			slot |= uint64(i) << 28
-			return slot
-		}
+	// Search uses binary search to find and return the smallest index i
+	// in [0, n) at which f(i) is true,
+	index := sort.Search(len(db.buckets), func(i int) bool {
+		return int(db.buckets[i].slotSize) > len(data)
+	})
+	if index == len(db.buckets) {
+		panic(fmt.Sprintf("No bucket found for size %d", len(data)))
 	}
-	panic(fmt.Sprintf("No bucket found for size %d", len(data)))
+	slot, err := db.buckets[index].Put(data)
+	if err != nil {
+		panic(fmt.Sprintf("Error in Put: %v\n", err))
+	}
+	slot |= uint64(index) << 28
+	return slot
 }
 
 // Get retrieves the data stored at the given key.
