@@ -1,0 +1,49 @@
+version: 2.1
+
+commands:
+  test:
+    parameters:
+      arch:
+        default: "amd64"
+        description: The target architecture.
+        type: enum
+        enum: ["amd64", "386"]
+    steps:
+      - run:
+          name: "Test (<<parameters.arch>>)"
+          command: |
+            export GOARCH=<<parameters.arch>>
+            go version
+            go env
+            go test -v -coverprofile=coverage-<<parameters.arch>>.txt -covermode=count ./...
+
+jobs:
+  go119:
+    docker:
+      - image: cimg/go:1.19
+    steps:
+      - run:
+          name: "Install tools"
+          command: |
+            curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.50.1
+      - checkout
+      - run:
+          name: "Lint"
+          command: golangci-lint run
+      - test:
+          arch: "amd64"
+      - test:
+          arch: "386"
+  go118:
+    docker:
+      - image: cimg/go:1.18
+    steps:
+      - checkout
+      - test
+
+workflows:
+  version: 2
+  billy:
+    jobs:
+      - go119
+      - go118
