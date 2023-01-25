@@ -27,7 +27,7 @@ type Database interface {
 	// data, or fail with an error.
 	Delete(key uint64) error
 
-	//
+	// Limits returns the smallest and largest slot size.
 	Limits() (uint32, uint32)
 }
 
@@ -39,26 +39,34 @@ type Database interface {
 // 30, true
 type SlotSizeFn func() (size int, done bool)
 
-type DB struct {
-	buckets []*Bucket
-	dbErr   error
-}
-
-// Open opens a (new or existing) database with the given limits.
-// If bucket already exists, they are opened and read, in order to populate the
-// internal gap-list.
-// While doing so, it's a good opportunity for the caller to read the data out,
-// (which is probably desirable), which can be done using the optional onData callback.
-func Open(path string, smallest, max int, onData OnDataFn) (Database, error) {
-	if smallest >= max {
-		return nil, fmt.Errorf("Bad options, min (%d) >= max (%d)", smallest, max)
+// SlotSizePowerOfTwo is a SlotSizeFn which arranges the slots in buckets which
+// double in size for each level.
+func SlotSizePowerOfTwo(min, max int) SlotSizeFn {
+	if min >= max { // programming error
+		panic(fmt.Sprintf("Bad options, min (%d) >= max (%d)", min, max))
 	}
-	v := smallest
-	return OpenCustom(path, func() (int, bool) {
+	v := min
+	return func() (int, bool) {
 		ret := v
 		v += v
 		return ret, ret >= max
-	}, onData)
+	}
+}
+
+// SlotSizeLinear is a SlotSizeFn which arranges the slots in buckets which
+// increase linearly.
+func SlotSizeLinear(size, count int) SlotSizeFn {
+	i := 1
+	return func() (int, bool) {
+		ret := size * i
+		i++
+		return ret, i >= count
+	}
+}
+
+type DB struct {
+	buckets []*Bucket
+	dbErr   error
 }
 
 // OpenCustom opens a (new or eixsting) database, with configurable limits. The
@@ -69,7 +77,7 @@ func Open(path string, smallest, max int, onData OnDataFn) (Database, error) {
 // internal gap-list.
 // While doing so, it's a good opportunity for the caller to read the data out,
 // (which is probably desirable), which can be done using the optional onData callback.
-func OpenCustom(path string, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error) {
+func Open(path string, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error) {
 	var (
 		db           = &DB{}
 		prevSlotSize = 0

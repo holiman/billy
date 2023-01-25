@@ -114,7 +114,7 @@ func openDb(ctx *cli.Context) (billy.Database, *dbParams, error) {
 }
 
 func doOpenDb(opts *dbParams) (billy.Database, error) {
-	db, err := billy.Open(opts.path, opts.min, opts.max, func(key uint64, data []byte) {
+	db, err := billy.Open(opts.path, billy.SlotSizePowerOfTwo(opts.min, opts.max), func(key uint64, data []byte) {
 		var d string
 		if len(data) > 100 {
 			d = fmt.Sprintf("%q...", data[:100])
