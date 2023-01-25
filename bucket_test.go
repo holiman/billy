@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,7 +76,9 @@ func TestBasics(t *testing.T) {
 		}
 	})
 	// Delete item and place a new one there
-	b.Delete(bb)
+	if err := b.Delete(bb); err != nil {
+		t.Fatal(err)
+	}
 	// Iteration should skip over deleted items
 	b.Iterate(func(slot uint64, data []byte) {
 		if have, want := byte(slot)+0x0a, data[0]; have != want {
@@ -101,10 +102,18 @@ func TestBasics(t *testing.T) {
 	if err := checkBlob(0x0f, get(ee), 35); err != nil {
 		t.Fatal(err)
 	}
-	b.Delete(aa)
-	b.Delete(ee)
-	b.Delete(cc)
-	b.Delete(dd)
+	if err := b.Delete(aa); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Delete(ee); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Delete(cc); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Delete(dd); err != nil {
+		t.Fatal(err)
+	}
 	// Iteration should be a no-op
 	b.Iterate(func(slot uint64, data []byte) {
 		t.Fatalf("Expected no iteration")
@@ -138,11 +147,11 @@ func checkIdentical(fileA, fileB string) error {
 		dataB []byte
 		err   error
 	)
-	dataA, err = ioutil.ReadFile(fileA)
+	dataA, err = os.ReadFile(fileA)
 	if err != nil {
 		return fmt.Errorf("failed to open %v: %v", fileA, err)
 	}
-	dataB, err = ioutil.ReadFile(fileB)
+	dataB, err = os.ReadFile(fileB)
 	if err != nil {
 		return fmt.Errorf("failed to open %v: %v", fileB, err)
 	}
@@ -216,9 +225,18 @@ func TestErrOnClose(t *testing.T) {
 		t.Fatalf("expected error for Get on closed bucket, got %v", err)
 	}
 	// Only expectation here is not to panic, basically
-	a.Delete(0)
-	a.Delete(1)
-	a.Delete(1000)
+	if err := a.Delete(0); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Delete(0); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Delete(1); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Delete(100); !errors.Is(err, ErrBadIndex) {
+		t.Fatal("exp error")
+	}
 }
 
 func TestBadInput(t *testing.T) {
@@ -323,7 +341,6 @@ func TestGapHeap(t *testing.T) {
 		}
 		gaps = gaps[:len(gaps)-1]
 	}
-
 }
 
 func TestCompaction2(t *testing.T) {
@@ -339,9 +356,12 @@ func TestCompaction2(t *testing.T) {
 	}
 	openAndIterate := func() string {
 		var data []byte
-		openBucket(p, 10, func(slot uint64, x []byte) {
+		_, err := openBucket(p, 10, func(slot uint64, x []byte) {
 			data = append(data, x...)
 		}, false)
+		if err != nil {
+			t.Fatal(err)
+		}
 		return string(data)
 	}
 	openAndDel := func(deletes ...int) {

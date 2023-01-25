@@ -71,7 +71,7 @@ func openBucket(path string, slotSize uint32, onData onBucketDataFn, readonly bo
 		id     = fmt.Sprintf("bkt_%08d.bag", slotSize)
 		f      *os.File
 		err    error
-		nSlots = uint64(0)
+		nSlots uint64
 	)
 	if readonly {
 		f, err = os.OpenFile(filepath.Join(path, fmt.Sprintf("%v", id)), os.O_RDONLY, 0666)
@@ -193,7 +193,9 @@ func (bucket *Bucket) Delete(slot uint64) error {
 			bucket.gaps = bucket.gaps[:len(bucket.gaps)-1]
 			bucket.tail--
 		}
-		bucket.f.Truncate(int64(bucket.tail * uint64(bucket.slotSize)))
+		if err := bucket.f.Truncate(int64(bucket.tail * uint64(bucket.slotSize))); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -422,7 +424,10 @@ func (bucket *Bucket) compact(onData onBucketDataFn) {
 	}
 	if firstTail != bucket.tail {
 		// Some gc was performed. gapSlot is the first empty slot now
-		bucket.f.Truncate(int64(bucket.tail * uint64(bucket.slotSize)))
+		if err := bucket.f.Truncate(int64(bucket.tail * uint64(bucket.slotSize))); err != nil {
+			// TODO handle better?
+			fmt.Fprintf(os.Stderr, "Warning: truncation failed: err %v", err)
+		}
 	}
 }
 

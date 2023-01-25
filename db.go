@@ -66,7 +66,6 @@ func SlotSizeLinear(size, count int) SlotSizeFn {
 
 type DB struct {
 	buckets []*Bucket
-	dbErr   error
 }
 
 type Options struct {
@@ -86,9 +85,9 @@ type Options struct {
 func Open(opts Options, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error) {
 	var (
 		db           = &DB{}
-		prevSlotSize = 0
-		prevId       = 0
-		slotSize     = 0
+		prevSlotSize int
+		prevId       int
+		slotSize     int
 		done         bool
 	)
 	for !done {

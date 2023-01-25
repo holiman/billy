@@ -173,7 +173,9 @@ func get64(ctx *cli.Context) error {
 	return doGet(ctx, func(data []byte) error {
 		out := new(strings.Builder)
 		enc := base64.NewEncoder(base64.StdEncoding, out)
-		enc.Write(data)
+		if _, err := enc.Write(data); err != nil {
+			return err
+		}
 		err := enc.Close()
 		fmt.Println(out.String())
 		return err
@@ -229,7 +231,9 @@ func startIpc(endpoint string) (net.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	os.Chmod(endpoint, 0600)
+	if err := os.Chmod(endpoint, 0600); err != nil {
+		return nil, err
+	}
 	return l, nil
 }
 
@@ -274,9 +278,9 @@ func serveCodec(conn net.Conn, db billy.Database, opts *dbParams) {
 				continue
 			}
 			enc := base64.NewEncoder(base64.StdEncoding, conn)
-			enc.Write(data)
-			enc.Close()
-			conn.Write([]byte("\n"))
+			_, _ = enc.Write(data)
+			_ = enc.Close()
+			_, _ = conn.Write([]byte("\n"))
 		case "DEL ":
 			k, ok := big.NewInt(0).SetString(string(line[4:]), 0)
 			if !ok {
@@ -287,7 +291,7 @@ func serveCodec(conn net.Conn, db billy.Database, opts *dbParams) {
 				fmt.Fprintf(os.Stderr, "failed to parse key (oob)")
 				continue
 			}
-			db.Delete(k.Uint64())
+			_ = db.Delete(k.Uint64())
 		case "RST ":
 			// Restart it
 			db.Close()
@@ -317,12 +321,13 @@ func open(ctx *cli.Context) error {
 	defer func() {
 		os.Remove(endpoint)
 	}()
-	go func(l net.Listener, db billy.Database, opts *dbParams) error {
+	go func(l net.Listener, db billy.Database, opts *dbParams) {
 		// ServeListener accepts connections on l, serving JSON-RPC on them.
 		for {
 			conn, err := l.Accept()
 			if err != nil {
-				return err
+				fmt.Fprintf(os.Stderr, "Err: %v\n", err)
+				return
 			}
 			go serveCodec(conn, db, opts)
 		}
