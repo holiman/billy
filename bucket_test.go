@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -153,14 +154,12 @@ func checkIdentical(fileA, fileB string) error {
 
 func setup(t *testing.T) (*Bucket, func()) {
 	t.Helper()
-	bName := fmt.Sprintf("%v.bucket", t.Name())
-	a, err := openBucketAs("./", bName, 200, nil, false)
+	a, err := openBucket(t.TempDir(), 200, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return a, func() {
 		a.Close()
-		os.Remove(bName)
 	}
 }
 
@@ -253,15 +252,17 @@ func TestCompaction(t *testing.T) {
 		a   *Bucket
 		b   *Bucket
 		err error
+		pA  = t.TempDir()
+		pB  = t.TempDir()
 	)
-	if err = writeBucketFile("a", 10, []byte{1, 0, 3, 0, 5, 0, 6, 0, 4, 0, 2, 0, 0}); err != nil {
+	if err = writeBucketFile(filepath.Join(pA, "bkt_00000010.bag"),
+		10, []byte{1, 0, 3, 0, 5, 0, 6, 0, 4, 0, 2, 0, 0}); err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove("a")
-	if err = writeBucketFile("b", 10, []byte{1, 2, 3, 4, 5, 6}); err != nil {
+	if err = writeBucketFile(filepath.Join(pB, "bkt_00000010.bag"),
+		10, []byte{1, 2, 3, 4, 5, 6}); err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove("b")
 	// The order and content that we expect for the onData
 	expOnData := []byte{1, 2, 3, 4, 5, 6}
 	var haveOnData []byte
@@ -269,18 +270,19 @@ func TestCompaction(t *testing.T) {
 		haveOnData = append(haveOnData, data[0])
 	}
 	/// Now open them as buckets
-	a, err = openBucketAs("./", "a", 10, onData, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err = openBucketAs("./", "b", 10, nil, false)
+	a, err = openBucket(pA, 10, onData, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	a.Close()
+	b, err = openBucket(pB, 10, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
 	b.Close()
-	// Check the content of the files
-	if err := checkIdentical("a", "b"); err != nil {
+	if err := checkIdentical(
+		filepath.Join(pA, "bkt_00000010.bag"),
+		filepath.Join(pB, "bkt_00000010.bag")); err != nil {
 		t.Fatal(err)
 	}
 	// And the content of the onData callback
@@ -325,12 +327,10 @@ func TestGapHeap(t *testing.T) {
 }
 
 func TestCompaction2(t *testing.T) {
-	t.Cleanup(func() {
-		os.RemoveAll("./.testCompaction2")
-	})
+	p := t.TempDir()
 	/// Now open them as buckets
 	openAndStore := func(data string) {
-		a, err := openBucketAs("./", ".testCompaction2", 10, nil, false)
+		a, err := openBucket(p, 10, nil, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -339,13 +339,13 @@ func TestCompaction2(t *testing.T) {
 	}
 	openAndIterate := func() string {
 		var data []byte
-		openBucketAs("./", ".testCompaction2", 10, func(slot uint64, x []byte) {
+		openBucket(p, 10, func(slot uint64, x []byte) {
 			data = append(data, x...)
 		}, false)
 		return string(data)
 	}
 	openAndDel := func(deletes ...int) {
-		a, err := openBucketAs("./", ".testCompaction2", 10, nil, false)
+		a, err := openBucket(p, 10, nil, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -376,7 +376,8 @@ func TestCompaction2(t *testing.T) {
 
 func TestBucketRO(t *testing.T) {
 	p := t.TempDir()
-	a, err := openBucketAs(p, ".testCompaction2", 20, nil, false)
+
+	a, err := openBucket(p, 20, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -400,7 +401,7 @@ func TestBucketRO(t *testing.T) {
 
 	// READONLY
 	out := new(strings.Builder)
-	a, err = openBucketAs(p, ".testCompaction2", 20, func(slot uint64, data []byte) {
+	a, err = openBucket(p, 20, func(slot uint64, data []byte) {
 		fmt.Fprintf(out, "%d:%d, ", slot, len(data))
 	}, true)
 	if err != nil {
@@ -422,7 +423,7 @@ func TestBucketRO(t *testing.T) {
 	// READ/WRITE
 	// We now expect the last data (4:9) to be moved to slot 2
 	out = new(strings.Builder)
-	a, err = openBucketAs(p, ".testCompaction2", 20, func(slot uint64, data []byte) {
+	a, err = openBucket(p, 20, func(slot uint64, data []byte) {
 		fmt.Fprintf(out, "%d:%d, ", slot, len(data))
 	}, false)
 	if err != nil {

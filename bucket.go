@@ -51,23 +51,28 @@ type Bucket struct {
 	readonly bool
 }
 
-// openBucketAs is mainly exposed for testing purposes
-func openBucketAs(path string, id string, slotSize uint32, onData onBucketDataFn, readonly bool) (*Bucket, error) {
+// openBucket opens a (new or existing) bucket with the given slot size.
+// If the bucket already exists, it's opened and read, which populates the
+// internal gap-list.
+// The onData callback is optional, and can be nil.
+func openBucket(path string, slotSize uint32, onData onBucketDataFn, readonly bool) (*Bucket, error) {
 	if slotSize < minSlotSize {
 		return nil, fmt.Errorf("slot size %d smaller than minimum (%d)", slotSize, minSlotSize)
 	}
 	if slotSize > maxSlotSize {
 		return nil, fmt.Errorf("slot size %d larger than maximum (%d)", slotSize, maxSlotSize)
 	}
-	// Check if the path exists
-	finfo, err := os.Stat(path)
-	if err != nil {
+	if finfo, err := os.Stat(path); err != nil {
 		return nil, err
-	}
-	if !finfo.IsDir() {
+	} else if !finfo.IsDir() {
 		return nil, fmt.Errorf("not a directory: '%v'", path)
 	}
-	var f *os.File
+	var (
+		id     = fmt.Sprintf("bkt_%08d.bag", slotSize)
+		f      *os.File
+		err    error
+		nSlots = uint64(0)
+	)
 	if readonly {
 		f, err = os.OpenFile(filepath.Join(path, fmt.Sprintf("%v", id)), os.O_RDONLY, 0666)
 	} else {
@@ -76,7 +81,6 @@ func openBucketAs(path string, id string, slotSize uint32, onData onBucketDataFn
 	if err != nil {
 		return nil, err
 	}
-	var nSlots = uint64(0)
 	if stat, err := f.Stat(); err != nil {
 		return nil, err
 	} else {
@@ -93,15 +97,6 @@ func openBucketAs(path string, id string, slotSize uint32, onData onBucketDataFn
 	// Compact + iterate
 	bucket.compact(onData)
 	return bucket, nil
-}
-
-// openBucket opens a (new or existing) bucket with the given slot size.
-// If the bucket already exists, it's opened and read, which populates the
-// internal gap-list.
-// The onData callback is optional, and can be nil.
-func openBucket(path string, slotSize uint32, onData onBucketDataFn, readOnly bool) (*Bucket, error) {
-	id := fmt.Sprintf("bkt_%08d.bag", slotSize)
-	return openBucketAs(path, id, slotSize, onData, readOnly)
 }
 
 func (bucket *Bucket) Close() error {
