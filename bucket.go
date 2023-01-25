@@ -29,6 +29,7 @@ var (
 	ErrOversized   = errors.New("data too large for bucket")
 	ErrBadIndex    = errors.New("bad index")
 	ErrEmptyData   = errors.New("empty data")
+	ErrReadonly    = errors.New("read-only mode")
 	ErrCorruptData = errors.New("corrupt data")
 )
 
@@ -44,13 +45,14 @@ type Bucket struct {
 	gaps sortedUniqueInts
 	tail uint64 // First free slot
 
-	fileMu sync.RWMutex // Mutex for file operations on 'f' (rw versus Close) and closed
-	f      *os.File     // The file backing the data
-	closed bool
+	fileMu   sync.RWMutex // Mutex for file operations on 'f' (rw versus Close) and closed
+	f        *os.File     // The file backing the data
+	closed   bool
+	readonly bool
 }
 
 // openBucketAs is mainly exposed for testing purposes
-func openBucketAs(path string, id string, slotSize uint32, onData onBucketDataFn) (*Bucket, error) {
+func openBucketAs(path string, id string, slotSize uint32, onData onBucketDataFn, readonly bool) (*Bucket, error) {
 	if slotSize < minSlotSize {
 		return nil, fmt.Errorf("slot size %d smaller than minimum (%d)", slotSize, minSlotSize)
 	}
@@ -65,7 +67,12 @@ func openBucketAs(path string, id string, slotSize uint32, onData onBucketDataFn
 	if !finfo.IsDir() {
 		return nil, fmt.Errorf("not a directory: '%v'", path)
 	}
-	f, err := os.OpenFile(filepath.Join(path, fmt.Sprintf("%v", id)), os.O_RDWR|os.O_CREATE, 0666)
+	var f *os.File
+	if readonly {
+		f, err = os.OpenFile(filepath.Join(path, fmt.Sprintf("%v", id)), os.O_RDONLY, 0666)
+	} else {
+		f, err = os.OpenFile(filepath.Join(path, fmt.Sprintf("%v", id)), os.O_RDWR|os.O_CREATE, 0666)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -81,6 +88,7 @@ func openBucketAs(path string, id string, slotSize uint32, onData onBucketDataFn
 		slotSize: slotSize,
 		tail:     nSlots,
 		f:        f,
+		readonly: readonly,
 	}
 	// Compact + iterate
 	bucket.compact(onData)
@@ -91,9 +99,9 @@ func openBucketAs(path string, id string, slotSize uint32, onData onBucketDataFn
 // If the bucket already exists, it's opened and read, which populates the
 // internal gap-list.
 // The onData callback is optional, and can be nil.
-func openBucket(path string, slotSize uint32, onData onBucketDataFn) (*Bucket, error) {
+func openBucket(path string, slotSize uint32, onData onBucketDataFn, readOnly bool) (*Bucket, error) {
 	id := fmt.Sprintf("bkt_%08d.bag", slotSize)
-	return openBucketAs(path, id, slotSize, onData)
+	return openBucketAs(path, id, slotSize, onData, readOnly)
 }
 
 func (bucket *Bucket) Close() error {
@@ -139,6 +147,9 @@ func (bucket *Bucket) Update(data []byte, slot uint64) error {
 // Put writes the given data and returns a slot identifier. The caller may
 // modify the data after this method returns.
 func (bucket *Bucket) Put(data []byte) (uint64, error) {
+	if bucket.readonly {
+		return 0, ErrReadonly
+	}
 	// Validations
 	if len(data) == 0 {
 		return 0, ErrEmptyData
@@ -161,6 +172,9 @@ func (bucket *Bucket) Put(data []byte) (uint64, error) {
 // Delete does not touch the disk. When the bucket is Close():d, any remaining
 // gaps will be marked as such in the backing file.
 func (bucket *Bucket) Delete(slot uint64) error {
+	if bucket.readonly {
+		return ErrReadonly
+	}
 	// Mark gap
 	bucket.gapsMu.Lock()
 	defer bucket.gapsMu.Unlock()
@@ -364,7 +378,6 @@ func (bucket *Bucket) compact(onData onBucketDataFn) {
 			if size := readSlot(slot); size != 0 {
 				// We've found a slot of data. Copy it to the gap
 				writeBuf(gap)
-				fmt.Printf("Writing data from %d to %d\n", slot, gap)
 				if onData != nil {
 					onData(gap, buf[itemHeaderSize:itemHeaderSize+size])
 				}
@@ -386,6 +399,9 @@ func (bucket *Bucket) compact(onData onBucketDataFn) {
 	// the algorithm is finished.
 	// This algorithm reads minimal number of items and performs minimal
 	// number of writes.
+
+	// TODO: Fix it so we don't (try to) mutate the file in readonly mode, but still
+	// iterate for the ondata callbacks.
 	bucket.gaps = make([]uint64, 0)
 	if empty {
 		return

@@ -97,7 +97,7 @@ func Open(opts Options, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error
 			return nil, fmt.Errorf("slot sizes must be in increasing order")
 		}
 		prevSlotSize = slotSize
-		bucket, err := openBucket(opts.Path, uint32(slotSize), wrapBucketDataFn(len(db.buckets), onData))
+		bucket, err := openBucket(opts.Path, uint32(slotSize), wrapBucketDataFn(len(db.buckets), onData), opts.Readonly)
 		if err != nil {
 			db.Close() // Close buckets
 			return nil, err

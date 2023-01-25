@@ -153,7 +153,7 @@ func checkIdentical(fileA, fileB string) error {
 func setup(t *testing.T) (*Bucket, func()) {
 	t.Helper()
 	bName := fmt.Sprintf("%v.bucket", t.Name())
-	a, err := openBucketAs("./", bName, 200, nil)
+	a, err := openBucketAs("./", bName, 200, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,11 +268,11 @@ func TestCompaction(t *testing.T) {
 		haveOnData = append(haveOnData, data[0])
 	}
 	/// Now open them as buckets
-	a, err = openBucketAs("./", "a", 10, onData)
+	a, err = openBucketAs("./", "a", 10, onData, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err = openBucketAs("./", "b", 10, nil)
+	b, err = openBucketAs("./", "b", 10, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +329,7 @@ func TestCompaction2(t *testing.T) {
 	})
 	/// Now open them as buckets
 	openAndStore := func(data string) {
-		a, err := openBucketAs("./", ".testCompaction2", 10, nil)
+		a, err := openBucketAs("./", ".testCompaction2", 10, nil, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -340,11 +340,11 @@ func TestCompaction2(t *testing.T) {
 		var data []byte
 		openBucketAs("./", ".testCompaction2", 10, func(slot uint64, x []byte) {
 			data = append(data, x...)
-		})
+		}, false)
 		return string(data)
 	}
 	openAndDel := func(deletes ...int) {
-		a, err := openBucketAs("./", ".testCompaction2", 10, nil)
+		a, err := openBucketAs("./", ".testCompaction2", 10, nil, false)
 		if err != nil {
 			t.Fatal(err)
 		}
