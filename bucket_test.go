@@ -365,8 +365,12 @@ func TestCompaction2(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		a.Put([]byte(data))
-		a.Close()
+		if _, err := a.Put([]byte(data)); err != nil {
+			t.Fatal(err)
+		}
+		if err := a.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	openAndIterate := func() string {
 		var data []byte
@@ -384,9 +388,13 @@ func TestCompaction2(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, id := range deletes {
-			a.Delete(uint64(id))
+			if err := a.Delete(uint64(id)); err != nil {
+				t.Fatal(err)
+			}
 		}
-		a.Close()
+		if err := a.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 	openAndStore("000000")
 	openAndStore("111111")
