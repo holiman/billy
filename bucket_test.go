@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -359,7 +360,7 @@ func TestCompaction2(t *testing.T) {
 	openAndStore("333333")
 	openAndStore("444444")
 	if have, want := openAndIterate(), "000000111111222222333333444444"; have != want {
-		t.Fatalf("have %v want %v", have, want)
+		t.Fatalf("have %v\nwant %v", have, want)
 	}
 	openAndDel(1)
 	// If we delete 1, then the last item should be moved into the gap
@@ -370,6 +371,70 @@ func TestCompaction2(t *testing.T) {
 	// If we delete 1, then the last item should be moved into the gap
 	if have, want := openAndIterate(), "000000333333"; have != want {
 		t.Fatalf("have %v want %v", have, want)
+	}
+}
+
+func TestBucketRO(t *testing.T) {
+	p := t.TempDir()
+	a, err := openBucketAs(p, ".testCompaction2", 20, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = a.Put(make([]byte, 17))
+	if !errors.Is(err, ErrOversized) {
+		t.Fatalf("expected error")
+	}
+	// Put some items there, then delete the second to create a gap
+	// When we later open it as readonly, there should be mo compaction
+	// (so a gap at index 2), but all items should be iterated
+	_, err = a.Put(make([]byte, 5)) // id 0, size 5
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Put(make([]byte, 6))          // id 1, size 6
+	id, _ := a.Put(make([]byte, 7)) // id 2, size 7
+	a.Put(make([]byte, 8))          // id 3, size 8
+	a.Put(make([]byte, 9))          // id 4, size 9
+	a.Delete(id)
+	a.Close()
+
+	// READONLY
+	out := new(strings.Builder)
+	a, err = openBucketAs(p, ".testCompaction2", 20, func(slot uint64, data []byte) {
+		fmt.Fprintf(out, "%d:%d, ", slot, len(data))
+	}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "0:5, 1:6, 3:8, 4:9, "
+	have := out.String()
+	if have != want {
+		t.Fatalf("have '%v'\nwant: '%v'\n", have, want)
+	}
+	if _, err := a.Put(make([]byte, 10)); !errors.Is(err, ErrReadonly) {
+		t.Fatal("Expected error")
+	}
+
+	if err = a.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// READ/WRITE
+	// We now expect the last data (4:9) to be moved to slot 2
+	out = new(strings.Builder)
+	a, err = openBucketAs(p, ".testCompaction2", 20, func(slot uint64, data []byte) {
+		fmt.Fprintf(out, "%d:%d, ", slot, len(data))
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = "0:5, 1:6, 2:9, 3:8, "
+	have = out.String()
+	if have != want {
+		t.Fatalf("have '%v'\nwant: '%v'\n", have, want)
+	}
+	if err = a.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 

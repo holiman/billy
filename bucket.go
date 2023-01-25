@@ -399,19 +399,22 @@ func (bucket *Bucket) compact(onData onBucketDataFn) {
 	// the algorithm is finished.
 	// This algorithm reads minimal number of items and performs minimal
 	// number of writes.
-
-	// TODO: Fix it so we don't (try to) mutate the file in readonly mode, but still
-	// iterate for the ondata callbacks.
 	bucket.gaps = make([]uint64, 0)
 	if empty {
+		return
+	}
+	if bucket.readonly {
+		// Don't (try to) mutate the file in readonly mode, but still
+		// iterate for the ondata callbacks.
+		for gapSlot <= bucket.tail {
+			gapSlot = nextGap(gapSlot)
+			gapSlot++
+		}
 		return
 	}
 	dataSlot--
 	firstTail := bucket.tail
 	for gapSlot <= dataSlot {
-		if gapSlot > 0 {
-			fmt.Printf("Searching for next gap after %d, tail %d\n", gapSlot, bucket.tail)
-		}
 		gapSlot = nextGap(gapSlot)
 		if gapSlot >= bucket.tail {
 			break // done here
@@ -421,7 +424,6 @@ func (bucket *Bucket) compact(onData onBucketDataFn) {
 		bucket.tail = dataSlot
 		gapSlot++
 		dataSlot--
-		fmt.Printf("gapSlot: %v, dataSlot: %v\n", gapSlot, dataSlot)
 	}
 	if firstTail != bucket.tail {
 		// Some gc was performed. gapSlot is the first empty slot now
