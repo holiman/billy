@@ -18,7 +18,7 @@ import (
 // [ uint32: size |  <data> ]
 const (
 	itemHeaderSize = 4
-	maxSlotSize    = 0xffffffff
+	maxSlotSize    = uint64(0xffffffff)
 	// minSlotSize is the minimum size of a slot. It needs to fit the header,
 	// and then some actual data too.
 	minSlotSize = itemHeaderSize * 2
@@ -58,9 +58,6 @@ type Bucket struct {
 func openBucket(path string, slotSize uint32, onData onBucketDataFn, readonly bool) (*Bucket, error) {
 	if slotSize < minSlotSize {
 		return nil, fmt.Errorf("slot size %d smaller than minimum (%d)", slotSize, minSlotSize)
-	}
-	if slotSize > maxSlotSize {
-		return nil, fmt.Errorf("slot size %d larger than maximum (%d)", slotSize, maxSlotSize)
 	}
 	if finfo, err := os.Stat(path); err != nil {
 		return nil, err

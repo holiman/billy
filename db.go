@@ -85,18 +85,20 @@ type Options struct {
 func Open(opts Options, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error) {
 	var (
 		db           = &DB{}
-		prevSlotSize int
+		prevSlotSize uint32
 		prevId       int
-		slotSize     int
+		slotSize     uint32
 		done         bool
 	)
 	for !done {
-		slotSize, done = slotSizeFn()
+		var slotSizeInt int
+		slotSizeInt, done = slotSizeFn()
+		slotSize = uint32(slotSizeInt)
 		if slotSize <= prevSlotSize {
 			return nil, fmt.Errorf("slot sizes must be in increasing order")
 		}
 		prevSlotSize = slotSize
-		bucket, err := openBucket(opts.Path, uint32(slotSize), wrapBucketDataFn(len(db.buckets), onData), opts.Readonly)
+		bucket, err := openBucket(opts.Path, slotSize, wrapBucketDataFn(len(db.buckets), onData), opts.Readonly)
 		if err != nil {
 			db.Close() // Close buckets
 			return nil, err
