@@ -69,6 +69,12 @@ type DB struct {
 	dbErr   error
 }
 
+type Options struct {
+	Path     string
+	Readonly bool
+	Snappy   bool // unused for now
+}
+
 // OpenCustom opens a (new or eixsting) database, with configurable limits. The
 // given slotSizeFn will be used to determine both the bucket sizes and the number
 // of buckets.
@@ -77,7 +83,7 @@ type DB struct {
 // internal gap-list.
 // While doing so, it's a good opportunity for the caller to read the data out,
 // (which is probably desirable), which can be done using the optional onData callback.
-func Open(path string, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error) {
+func Open(opts Options, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error) {
 	var (
 		db           = &DB{}
 		prevSlotSize = 0
@@ -91,7 +97,7 @@ func Open(path string, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error)
 			return nil, fmt.Errorf("slot sizes must be in increasing order")
 		}
 		prevSlotSize = slotSize
-		bucket, err := openBucket(path, uint32(slotSize), wrapBucketDataFn(len(db.buckets), onData))
+		bucket, err := openBucket(opts.Path, uint32(slotSize), wrapBucketDataFn(len(db.buckets), onData))
 		if err != nil {
 			db.Close() // Close buckets
 			return nil, err

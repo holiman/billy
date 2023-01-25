@@ -60,7 +60,7 @@ func fill(data byte, size int) []byte {
 }
 
 func TestDBBasics(t *testing.T) {
-	db, err := Open(t.TempDir(), SlotSizePowerOfTwo(128, 500), nil)
+	db, err := Open(Options{Path: t.TempDir()}, SlotSizePowerOfTwo(128, 500), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestCustomSlotSizesFailures(t *testing.T) {
 			return c, c > 5
 		},
 	} {
-		_, err := Open(t.TempDir(), tt, nil)
+		_, err := Open(Options{Path: t.TempDir()}, tt, nil)
 		if err == nil {
 			t.Errorf("test %d: expected error but got none", i)
 		}
@@ -122,7 +122,7 @@ func TestCustomSlotSizesFailures(t *testing.T) {
 
 func TestCustomSlotSizesOk(t *testing.T) {
 	a := 0
-	db, err := Open(t.TempDir(), func() (int, bool) {
+	db, err := Open(Options{Path: t.TempDir()}, func() (int, bool) {
 		ret := 10 * (1 + a)
 		a++
 		return ret, ret >= 30
