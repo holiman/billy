@@ -249,10 +249,18 @@ func TestBadInput(t *testing.T) {
 	a, cleanup := setup(t)
 	defer cleanup()
 
-	a.Put(make([]byte, 25))
-	a.Put(make([]byte, 25))
-	a.Put(make([]byte, 25))
-	a.Put(make([]byte, 25))
+	if _, err := a.Put(make([]byte, 25)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Put(make([]byte, 25)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Put(make([]byte, 25)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Put(make([]byte, 25)); err != nil {
+		t.Fatal(err)
+	}
 
 	if _, err := a.Get(uint64(0x000000FFFFFFFFFF)); !errors.Is(err, ErrBadIndex) {
 		t.Fatalf("expected %v, got %v", ErrBadIndex, err)
@@ -418,12 +426,16 @@ func TestBucketRO(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.Put(make([]byte, 6))          // id 1, size 6
+	_, _ = a.Put(make([]byte, 6))   // id 1, size 6
 	id, _ := a.Put(make([]byte, 7)) // id 2, size 7
-	a.Put(make([]byte, 8))          // id 3, size 8
-	a.Put(make([]byte, 9))          // id 4, size 9
-	a.Delete(id)
-	a.Close()
+	_, _ = a.Put(make([]byte, 8))   // id 3, size 8
+	_, _ = a.Put(make([]byte, 9))   // id 4, size 9
+	if err := a.Delete(id); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	// READONLY
 	out := new(strings.Builder)
