@@ -91,7 +91,7 @@ func TestDBBasics(t *testing.T) {
 	}
 }
 
-func TestCustomSlotSizes(t *testing.T) {
+func TestCustomSlotSizesFailures(t *testing.T) {
 	a := 500
 	b := 0
 	c := 0
@@ -117,5 +117,20 @@ func TestCustomSlotSizes(t *testing.T) {
 			t.Errorf("test %d: expected error but got none", i)
 		}
 		t.Logf("error: %v", err)
+	}
+}
+
+func TestCustomSlotSizesOk(t *testing.T) {
+	a := 0
+	db, err := OpenCustom(t.TempDir(), func() (int, bool) {
+		ret := 10 * (1 + a)
+		a++
+		return ret, ret >= 30
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if have, want := len(db.(*DB).buckets), 3; have != want {
+		t.Fatalf("have %d buckets, want %d", have, want)
 	}
 }

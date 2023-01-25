@@ -31,6 +31,14 @@ type Database interface {
 	Limits() (uint32, uint32)
 }
 
+// SlotSizeFn is a method that acts as a "generator": a closure which, at each
+// invocation, should spit out the next slot-size. In order to create a DB with three
+// shelves (buckets), invocation of the method should return e.g.
+// 10, false
+// 20, false
+// 30, true
+type SlotSizeFn func() (size int, done bool)
+
 type DB struct {
 	buckets []*Bucket
 	dbErr   error
@@ -46,12 +54,11 @@ func Open(path string, smallest, max int, onData OnDataFn) (Database, error) {
 		return nil, fmt.Errorf("Bad options, min (%d) >= max (%d)", smallest, max)
 	}
 	v := smallest
-	var slotSizeFn = func() (int, bool) {
+	return OpenCustom(path, func() (int, bool) {
 		ret := v
 		v += v
 		return ret, ret >= max
-	}
-	return OpenCustom(path, slotSizeFn, onData)
+	}, onData)
 }
 
 // OpenCustom opens a (new or eixsting) database, with configurable limits. The
@@ -62,15 +69,16 @@ func Open(path string, smallest, max int, onData OnDataFn) (Database, error) {
 // internal gap-list.
 // While doing so, it's a good opportunity for the caller to read the data out,
 // (which is probably desirable), which can be done using the optional onData callback.
-func OpenCustom(path string, slotSizeFn func() (int, bool), onData OnDataFn) (Database, error) {
-	db := &DB{}
-	prevSlotSize := 0
-	prevId := 0
-	for {
-		slotSize, done := slotSizeFn()
-		if done {
-			break
-		}
+func OpenCustom(path string, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error) {
+	var (
+		db           = &DB{}
+		prevSlotSize = 0
+		prevId       = 0
+		slotSize     = 0
+		done         bool
+	)
+	for !done {
+		slotSize, done = slotSizeFn()
 		if slotSize <= prevSlotSize {
 			return nil, fmt.Errorf("slot sizes must be in increasing order")
 		}
