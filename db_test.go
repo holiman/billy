@@ -20,7 +20,9 @@ func TestGrowFile(t *testing.T) {
 	defer os.Remove(filename)
 	defer f.Close()
 
-	f.Seek(55, 0)
+	if _, err := f.Seek(55, 0); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := f.Write([]byte("test")); err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +42,9 @@ func TestGrowFile2(t *testing.T) {
 	defer os.Remove(filename)
 	defer f.Close()
 
-	f.WriteAt([]byte("test"), 55)
+	if _, err := f.WriteAt([]byte("test"), 55); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := f.Write([]byte("test")); err != nil {
 		t.Fatal(err)
 	}

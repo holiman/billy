@@ -137,8 +137,8 @@ func writeBucketFile(name string, size int, slotData []byte) error {
 	if err != nil {
 		return err
 	}
-	f.Write(bucketData)
-	return nil
+	_, err = f.Write(bucketData)
+	return err
 }
 
 func checkIdentical(fileA, fileB string) error {
@@ -214,10 +214,16 @@ func TestErrOnClose(t *testing.T) {
 	if have, want := a.tail, uint64(2); have != want {
 		t.Fatalf("tail error have %v want %v", have, want)
 	}
-	a.Delete(0)
-
-	a.Close()
-	a.Close() // Double-close should be a no-op
+	if err := a.Delete(0); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Double-close should be a no-op
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := a.Put(make([]byte, 3)); !errors.Is(err, ErrClosed) {
 		t.Fatalf("expected error for Put on closed bucket, got %v", err)
 	}

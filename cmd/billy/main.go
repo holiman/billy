@@ -261,7 +261,7 @@ func serveCodec(conn net.Conn, db billy.Database, opts *dbParams) {
 				continue
 			}
 			id := db.Put(data)
-			conn.Write([]byte(fmt.Sprintf("%#08x\n", id)))
+			_ = conn.Write([]byte(fmt.Sprintf("%#08x\n", id)))
 		case "GET ":
 			k, ok := big.NewInt(0).SetString(string(line[4:]), 0)
 			if !ok {
