@@ -242,10 +242,10 @@ func (s *shelf) writeFile(hdr, data []byte, slot uint64) error {
 	if s.closed {
 		return ErrClosed
 	}
-	if _, err := s.f.WriteAt(hdr, int64(slot)*int64(s.slotSize)); err != nil {
-		return err
-	}
-	if _, err := s.f.WriteAt(data, int64(slot)*int64(s.slotSize)+int64(len(hdr))); err != nil {
+	buf := make([]byte, 0, len(hdr)+len(data))
+	buf = append(buf, hdr...)
+	buf = append(buf, data...)
+	if _, err := s.f.WriteAt(buf, int64(slot)*int64(s.slotSize)); err != nil {
 		return err
 	}
 	return nil
