@@ -96,22 +96,22 @@ func TestDBBasics(t *testing.T) {
 }
 
 func TestCustomSlotSizesFailures(t *testing.T) {
-	a := 500
-	b := 0
-	c := 0
-	for i, tt := range []func() (int, bool){
+	a := uint32(500)
+	var b uint32
+	var c uint32
+	for i, tt := range []SlotSizeFn{
 		// Not increasing orders
-		func() (int, bool) {
+		func() (uint32, bool) {
 			a--
 			return a, false
 		},
 		// Too many buckets
-		func() (int, bool) {
+		func() (uint32, bool) {
 			b++
 			return 1024 + b, b > 10000
 		},
 		// Too small buckets
-		func() (int, bool) {
+		func() (uint32, bool) {
 			c++
 			return c, c > 5
 		},
@@ -126,10 +126,10 @@ func TestCustomSlotSizesFailures(t *testing.T) {
 
 func TestCustomSlotSizesOk(t *testing.T) {
 	a := 0
-	db, err := Open(Options{Path: t.TempDir()}, func() (int, bool) {
+	db, err := Open(Options{Path: t.TempDir()}, func() (uint32, bool) {
 		ret := 10 * (1 + a)
 		a++
-		return ret, ret >= 30
+		return uint32(ret), ret >= 30
 	}, nil)
 	if err != nil {
 		t.Fatal(err)

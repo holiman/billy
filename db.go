@@ -37,16 +37,16 @@ type Database interface {
 // 10, false
 // 20, false
 // 30, true
-type SlotSizeFn func() (size int, done bool)
+type SlotSizeFn func() (size uint32, done bool)
 
 // SlotSizePowerOfTwo is a SlotSizeFn which arranges the slots in buckets which
 // double in size for each level.
-func SlotSizePowerOfTwo(min, max int) SlotSizeFn {
+func SlotSizePowerOfTwo(min, max uint32) SlotSizeFn {
 	if min >= max { // programming error
 		panic(fmt.Sprintf("Bad options, min (%d) >= max (%d)", min, max))
 	}
 	v := min
-	return func() (int, bool) {
+	return func() (uint32, bool) {
 		ret := v
 		v += v
 		return ret, ret >= max
@@ -57,10 +57,10 @@ func SlotSizePowerOfTwo(min, max int) SlotSizeFn {
 // increase linearly.
 func SlotSizeLinear(size, count int) SlotSizeFn {
 	i := 1
-	return func() (int, bool) {
+	return func() (uint32, bool) {
 		ret := size * i
 		i++
-		return ret, i >= count
+		return uint32(ret), i >= count
 	}
 }
 
@@ -91,9 +91,7 @@ func Open(opts Options, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error
 		done         bool
 	)
 	for !done {
-		var slotSizeInt int
-		slotSizeInt, done = slotSizeFn()
-		slotSize = uint32(slotSizeInt)
+		slotSize, done = slotSizeFn()
 		if slotSize <= prevSlotSize {
 			return nil, fmt.Errorf("slot sizes must be in increasing order")
 		}

@@ -99,15 +99,15 @@ func main() {
 
 type dbParams struct {
 	path string
-	min  int
-	max  int
+	min  uint32
+	max  uint32
 }
 
 func openDb(ctx *cli.Context) (billy.Database, *dbParams, error) {
 	opts := &dbParams{
 		path: ctx.String("path"),
-		min:  ctx.Int("min"),
-		max:  ctx.Int("max"),
+		min:  uint32(ctx.Int("min")),
+		max:  uint32(ctx.Int("max")),
 	}
 	db, err := doOpenDb(opts)
 	return db, opts, err
