@@ -1,5 +1,7 @@
 # Billy
 
+[![CircleCI](https://dl.circleci.com/status-badge/img/gh/holiman/billy/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/holiman/billy/tree/main)
+
 Billy (previously BagDB) is a super simple datastore. It can't _quite_ be called a database, because it avoids implementing some of the most complex parts of an actual database. 
 It's intended to be used in very particular circumstances. 
 
