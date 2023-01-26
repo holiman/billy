@@ -134,7 +134,7 @@ func TestCustomSlotSizesOk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if have, want := len(db.(*DB).buckets), 3; have != want {
+	if have, want := len(db.(*DB).shelves), 3; have != want {
 		t.Fatalf("have %d buckets, want %d", have, want)
 	}
 }

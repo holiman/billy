@@ -120,8 +120,8 @@ func TestBasics(t *testing.T) {
 	})
 }
 
-func writeBucketFile(name string, size int, slotData []byte) error {
-	var bucketData = make([]byte, len(slotData)*size)
+func writeShelfFile(name string, size int, slotData []byte) error {
+	var shelfData = make([]byte, len(slotData)*size)
 	// Fill all the items
 	for i, byt := range slotData {
 		if byt == 0 {
@@ -129,15 +129,15 @@ func writeBucketFile(name string, size int, slotData []byte) error {
 		}
 		data := getBlob(byt, size-itemHeaderSize)
 		// write header
-		binary.BigEndian.PutUint32(bucketData[i*size:], uint32(size-itemHeaderSize))
+		binary.BigEndian.PutUint32(shelfData[i*size:], uint32(size-itemHeaderSize))
 		// write data
-		copy(bucketData[i*size+itemHeaderSize:], data)
+		copy(shelfData[i*size+itemHeaderSize:], data)
 	}
 	f, err := os.Create(name)
 	if err != nil {
 		return err
 	}
-	_, err = f.Write(bucketData)
+	_, err = f.Write(shelfData)
 	return err
 }
 
@@ -161,9 +161,9 @@ func checkIdentical(fileA, fileB string) error {
 	return nil
 }
 
-func setup(t *testing.T) (*Bucket, func()) {
+func setup(t *testing.T) (*shelf, func()) {
 	t.Helper()
-	a, err := openBucket(t.TempDir(), 200, nil, false)
+	a, err := openShelf(t.TempDir(), 200, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,8 +173,8 @@ func setup(t *testing.T) (*Bucket, func()) {
 }
 
 // TestOversized
-// - Test writing oversized data into a bucket
-// - Test writing exactly-sized data into a bucket
+// - Test writing oversized data into a shelf
+// - Test writing exactly-sized data into a shelf
 func TestOversized(t *testing.T) {
 	a, cleanup := setup(t)
 	defer cleanup()
@@ -198,7 +198,7 @@ func TestOversized(t *testing.T) {
 }
 
 // TestErrOnClose
-// - Tests reading, writing, deleting from a closed bucket
+// - Tests reading, writing, deleting from a closed shelf
 func TestErrOnClose(t *testing.T) {
 	a, cleanup := setup(t)
 	defer cleanup()
@@ -225,10 +225,10 @@ func TestErrOnClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := a.Put(make([]byte, 3)); !errors.Is(err, ErrClosed) {
-		t.Fatalf("expected error for Put on closed bucket, got %v", err)
+		t.Fatalf("expected error for Put on closed shelf, got %v", err)
 	}
 	if _, err := a.Get(0); !errors.Is(err, ErrBadIndex) {
-		t.Fatalf("expected error for Get on closed bucket, got %v", err)
+		t.Fatalf("expected error for Get on closed shelf, got %v", err)
 	}
 	// Only expectation here is not to panic, basically
 	if err := a.Delete(0); err != nil {
@@ -281,17 +281,17 @@ func TestBadInput(t *testing.T) {
 
 func TestCompaction(t *testing.T) {
 	var (
-		a   *Bucket
-		b   *Bucket
+		a   *shelf
+		b   *shelf
 		err error
 		pA  = t.TempDir()
 		pB  = t.TempDir()
 	)
-	if err = writeBucketFile(filepath.Join(pA, "bkt_00000010.bag"),
+	if err = writeShelfFile(filepath.Join(pA, "bkt_00000010.bag"),
 		10, []byte{1, 0, 3, 0, 5, 0, 6, 0, 4, 0, 2, 0, 0}); err != nil {
 		t.Fatal(err)
 	}
-	if err = writeBucketFile(filepath.Join(pB, "bkt_00000010.bag"),
+	if err = writeShelfFile(filepath.Join(pB, "bkt_00000010.bag"),
 		10, []byte{1, 2, 3, 4, 5, 6}); err != nil {
 		t.Fatal(err)
 	}
@@ -301,13 +301,13 @@ func TestCompaction(t *testing.T) {
 	onData := func(slot uint64, data []byte) {
 		haveOnData = append(haveOnData, data[0])
 	}
-	/// Now open them as buckets
-	a, err = openBucket(pA, 10, onData, false)
+	/// Now open them as shelves
+	a, err = openShelf(pA, 10, onData, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	a.Close()
-	b, err = openBucket(pB, 10, nil, false)
+	b, err = openShelf(pB, 10, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -359,9 +359,9 @@ func TestGapHeap(t *testing.T) {
 
 func TestCompaction2(t *testing.T) {
 	p := t.TempDir()
-	/// Now open them as buckets
+	/// Now open them as shelves
 	openAndStore := func(data string) {
-		a, err := openBucket(p, 10, nil, false)
+		a, err := openShelf(p, 10, nil, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -374,7 +374,7 @@ func TestCompaction2(t *testing.T) {
 	}
 	openAndIterate := func() string {
 		var data []byte
-		_, err := openBucket(p, 10, func(slot uint64, x []byte) {
+		_, err := openShelf(p, 10, func(slot uint64, x []byte) {
 			data = append(data, x...)
 		}, false)
 		if err != nil {
@@ -383,7 +383,7 @@ func TestCompaction2(t *testing.T) {
 		return string(data)
 	}
 	openAndDel := func(deletes ...int) {
-		a, err := openBucket(p, 10, nil, false)
+		a, err := openShelf(p, 10, nil, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -416,10 +416,10 @@ func TestCompaction2(t *testing.T) {
 	}
 }
 
-func TestBucketRO(t *testing.T) {
+func TestShelfRO(t *testing.T) {
 	p := t.TempDir()
 
-	a, err := openBucket(p, 20, nil, false)
+	a, err := openShelf(p, 20, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -447,7 +447,7 @@ func TestBucketRO(t *testing.T) {
 
 	// READONLY
 	out := new(strings.Builder)
-	a, err = openBucket(p, 20, func(slot uint64, data []byte) {
+	a, err = openShelf(p, 20, func(slot uint64, data []byte) {
 		fmt.Fprintf(out, "%d:%d, ", slot, len(data))
 	}, true)
 	if err != nil {
@@ -469,7 +469,7 @@ func TestBucketRO(t *testing.T) {
 	// READ/WRITE
 	// We now expect the last data (4:9) to be moved to slot 2
 	out = new(strings.Builder)
-	a, err = openBucket(p, 20, func(slot uint64, data []byte) {
+	a, err = openShelf(p, 20, func(slot uint64, data []byte) {
 		fmt.Fprintf(out, "%d:%d, ", slot, len(data))
 	}, false)
 	if err != nil {

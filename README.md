@@ -51,14 +51,16 @@ we have very special circumstances:
  The `bagdb` uses has the following API:
  
  - `Put(data []byte) uint64`. This operation stores the given `data`, and returns a 'direct' reference to where the data is stored. By 'direct', it means that there is no 
- indirection involved, the returned `key` is a direct reference to the `bucket` and `slot` where the data can later be found. 
-   - The `billy` uses a set of `bucket`s. Each bucket has a dynamic number of `slots`, where each slot within a `bucket` is a fixed size. This design is meant to alleviate the 
-   fragmentation problem: if a piece of `data` is `168 bytes`, and our bucket sizes are `100`, `200`, `400`, `800`, `1600` .... , then `billy` will choose the `bucket` 
-   with `200` byte size. The `168` bytes of data will be placed into `bucket` `1`, at the first free slot. 
- - `Delete(key uint64)`. The `delete` operation will simply look up the `bucket`, and tell the `bucket` that the identified `slot` now is free for re-use. It will be overwritten
+ indirection involved, the returned `key` is a direct reference to the `shelf` and `slot` where the data can later be found. 
+   - The `billy` uses a set of shelves. Each shelf has a dynamic number of `slots`, where each slot within a `shelf` is a fixed size. This design is meant to alleviate the 
+   fragmentation problem: if a piece of `data` is `168 bytes`, and our shelf sizes are `100`, `200`, `400`, `800`, `1600` .... , then `billy` will choose the `shelf` 
+   with `200` byte size. The `168` bytes of data will be placed into `shelf` `1`, at the first free slot. 
+ - `Delete(key uint64)`. The `delete` operation will simply look up the `shelf`, and tell the `shelf` that the identified `slot` now is free for re-use. It will be overwritten
   during a later `Put`  operation. 
- - `Get(key uint64)`. Again, this is a very trivial operation: find the `bucket`, load the identified `slot`, and return. 
+ - `Get(key uint64)`. Again, this is a very trivial operation: find the `shelf`, load the identified `slot`, and return. 
  
+![shelves](./shelves.jpg)
+
 ### Compaction
 
 Saying that we can't do compaction is not strictly true: there are two things that can be (and are) done to minimize the disk usage. 
@@ -76,11 +78,11 @@ Saying that we can't do compaction is not strictly true: there are two things th
 
 The identifer for accessing an item, a `uint64` is composed as follows: 
 
-| bit   | range           | usage                           | 
-|-------|-----------------|---------------------------------|
-| 0-23  | 24 bits, `16M`  | reserved for future use         |
-| 23-35 | 12 bits, `4K`   | `bucket id` - Bucket identifier |  
-| 35-63 | 28 bits, `256M` | `slotkey` - slot identifier     |  
+| bit   | range           | usage                         | 
+|-------|-----------------|-------------------------------|
+| 0-23  | 24 bits, `16M`  | reserved for future use       |
+| 23-35 | 12 bits, `4K`   | `shelf id` - Shelf identifier |  
+| 35-63 | 28 bits, `256M` | `slotkey` - slot identifier   |  
 
 The items themselves are stored with `size` as a 32-bit big-endian encoded integer,
 followed by the item itself. The 'slack-space' after `size` is _not_ cleared, so

@@ -33,13 +33,13 @@ type Database interface {
 
 // SlotSizeFn is a method that acts as a "generator": a closure which, at each
 // invocation, should spit out the next slot-size. In order to create a DB with three
-// shelves (buckets), invocation of the method should return e.g.
+// shelves invocation of the method should return e.g.
 // 10, false
 // 20, false
 // 30, true
 type SlotSizeFn func() (size uint32, done bool)
 
-// SlotSizePowerOfTwo is a SlotSizeFn which arranges the slots in buckets which
+// SlotSizePowerOfTwo is a SlotSizeFn which arranges the slots in shelves which
 // double in size for each level.
 func SlotSizePowerOfTwo(min, max uint32) SlotSizeFn {
 	if min >= max { // programming error
@@ -53,7 +53,7 @@ func SlotSizePowerOfTwo(min, max uint32) SlotSizeFn {
 	}
 }
 
-// SlotSizeLinear is a SlotSizeFn which arranges the slots in buckets which
+// SlotSizeLinear is a SlotSizeFn which arranges the slots in shelves which
 // increase linearly.
 func SlotSizeLinear(size, count int) SlotSizeFn {
 	i := 1
@@ -65,7 +65,7 @@ func SlotSizeLinear(size, count int) SlotSizeFn {
 }
 
 type DB struct {
-	buckets []*Bucket
+	shelves []*shelf
 }
 
 type Options struct {
@@ -75,10 +75,10 @@ type Options struct {
 }
 
 // OpenCustom opens a (new or eixsting) database, with configurable limits. The
-// given slotSizeFn will be used to determine both the bucket sizes and the number
-// of buckets.
+// given slotSizeFn will be used to determine both the shelf sizes and the number
+// of shelves.
 // The function must yield values in increasing order.
-// If bucket already exists, they are opened and read, in order to populate the
+// If shelf already exists, they are opened and read, in order to populate the
 // internal gap-list.
 // While doing so, it's a good opportunity for the caller to read the data out,
 // (which is probably desirable), which can be done using the optional onData callback.
@@ -96,15 +96,15 @@ func Open(opts Options, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error
 			return nil, fmt.Errorf("slot sizes must be in increasing order")
 		}
 		prevSlotSize = slotSize
-		bucket, err := openBucket(opts.Path, slotSize, wrapBucketDataFn(len(db.buckets), onData), opts.Readonly)
+		shelfet, err := openShelf(opts.Path, slotSize, wrapShelfDataFn(len(db.shelves), onData), opts.Readonly)
 		if err != nil {
-			db.Close() // Close buckets
+			db.Close() // Close shelves
 			return nil, err
 		}
-		db.buckets = append(db.buckets, bucket)
+		db.shelves = append(db.shelves, shelfet)
 
-		if id := len(db.buckets) & 0xfff; id < prevId {
-			return nil, fmt.Errorf("too many buckets (%d)", len(db.buckets))
+		if id := len(db.shelves) & 0xfff; id < prevId {
+			return nil, fmt.Errorf("too many shelves (%d)", len(db.shelves))
 		} else {
 			prevId = id
 		}
@@ -118,13 +118,13 @@ func Open(opts Options, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error
 func (db *DB) Put(data []byte) uint64 {
 	// Search uses binary search to find and return the smallest index i
 	// in [0, n) at which f(i) is true,
-	index := sort.Search(len(db.buckets), func(i int) bool {
-		return int(db.buckets[i].slotSize) > len(data)
+	index := sort.Search(len(db.shelves), func(i int) bool {
+		return int(db.shelves[i].slotSize) > len(data)
 	})
-	if index == len(db.buckets) {
-		panic(fmt.Sprintf("No bucket found for size %d", len(data)))
+	if index == len(db.shelves) {
+		panic(fmt.Sprintf("No shelf found for size %d", len(data)))
 	}
-	slot, err := db.buckets[index].Put(data)
+	slot, err := db.shelves[index].Put(data)
 	if err != nil {
 		panic(fmt.Sprintf("Error in Put: %v\n", err))
 	}
@@ -135,7 +135,7 @@ func (db *DB) Put(data []byte) uint64 {
 // Get retrieves the data stored at the given key.
 func (db *DB) Get(key uint64) ([]byte, error) {
 	id := int(key>>28) & 0xfff
-	return db.buckets[id].Get(key & 0x0FFFFFFF)
+	return db.shelves[id].Get(key & 0x0FFFFFFF)
 }
 
 // Delete marks the data for deletion, which means it will (eventually) be
@@ -144,7 +144,7 @@ func (db *DB) Get(key uint64) ([]byte, error) {
 // data, or fail with an error.
 func (db *DB) Delete(key uint64) error {
 	id := int(key>>28) & 0xfff
-	return db.buckets[id].Delete(key & 0x00FFFFFF)
+	return db.shelves[id].Delete(key & 0x00FFFFFF)
 }
 
 // OnDataFn is used to iterate the entire dataset in the DB.
@@ -152,12 +152,12 @@ func (db *DB) Delete(key uint64) error {
 // the iterator, so it needs to be copied if it is to be used later.
 type OnDataFn func(key uint64, data []byte)
 
-func wrapBucketDataFn(bucketId int, onData OnDataFn) onBucketDataFn {
+func wrapShelfDataFn(shelfId int, onData OnDataFn) onShelfDataFn {
 	if onData == nil {
 		return nil
 	}
 	return func(slot uint64, data []byte) {
-		key := slot | uint64(bucketId)<<28
+		key := slot | uint64(shelfId)<<28
 		onData(key, data)
 	}
 }
@@ -165,22 +165,22 @@ func wrapBucketDataFn(bucketId int, onData OnDataFn) onBucketDataFn {
 // Iterate iterates through all the data in the DB, and invokes the
 // given onData method for every element
 func (db *DB) Iterate(onData OnDataFn) {
-	for i, b := range db.buckets {
-		b.Iterate(wrapBucketDataFn(i, onData))
+	for i, b := range db.shelves {
+		b.Iterate(wrapShelfDataFn(i, onData))
 	}
 }
 
 func (db *DB) Limits() (uint32, uint32) {
-	smallest := db.buckets[0].slotSize
-	largest := db.buckets[len(db.buckets)-1].slotSize
+	smallest := db.shelves[0].slotSize
+	largest := db.shelves[len(db.shelves)-1].slotSize
 	return smallest, largest
 }
 
 // Close implements io.Closer
 func (db *DB) Close() error {
 	var err error
-	for _, bucket := range db.buckets {
-		if e := bucket.Close(); e != nil {
+	for _, shelf := range db.shelves {
+		if e := shelf.Close(); e != nil {
 			err = e
 		}
 	}
