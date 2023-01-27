@@ -135,13 +135,10 @@ func (s *shelf) Close() error {
 // efficient than Delete + Put, since it does not require managing slot availability
 // but instead just overwrites in-place.
 func (s *shelf) Update(data []byte, slot uint64) error {
-	// Write data: headesr + blob
+	// Write data: header + blob
 	hdr := make([]byte, itemHeaderSize)
 	binary.BigEndian.PutUint32(hdr, uint32(len(data)))
-	if err := s.writeFile(hdr, data, slot); err != nil {
-		return err
-	}
-	return nil
+	return s.writeFile(hdr, data, slot)
 }
 
 // Put writes the given data and returns a slot identifier. The caller may
@@ -225,21 +222,19 @@ func (s *shelf) readFile(slot uint64) ([]byte, error) {
 		return nil, ErrClosed
 	}
 	offset := int64(slot) * int64(s.slotSize)
-	// Read header
-	hdr := make([]byte, itemHeaderSize)
-	_, err := s.f.ReadAt(hdr, offset)
+	// Read the entire slot at once -- this might mean we read a bit more
+	// than strictly necessary, but it saves us one syscall.
+	slotData := make([]byte, s.slotSize)
+	_, err := s.f.ReadAt(slotData, offset)
 	if err != nil {
 		return nil, err
 	}
 	// Check data size
-	blobLen := binary.BigEndian.Uint32(hdr)
-	if blobLen+uint32(itemHeaderSize) > uint32(s.slotSize) {
+	itemSize := binary.BigEndian.Uint32(slotData)
+	if itemHeaderSize+itemSize >= uint32(s.slotSize) {
 		return nil, ErrCorruptData
 	}
-	// Read data
-	buf := make([]byte, blobLen)
-	_, err = s.f.ReadAt(buf, offset+itemHeaderSize)
-	return buf, err
+	return slotData[itemHeaderSize : itemHeaderSize+itemSize], nil
 }
 
 func (s *shelf) writeFile(hdr, data []byte, slot uint64) error {
@@ -250,9 +245,9 @@ func (s *shelf) writeFile(hdr, data []byte, slot uint64) error {
 	if s.closed {
 		return ErrClosed
 	}
-	buf := make([]byte, 0, len(hdr)+len(data))
-	buf = append(buf, hdr...)
-	buf = append(buf, data...)
+	buf := make([]byte, s.slotSize)
+	copy(buf, hdr[:])
+	copy(buf[itemHeaderSize:], data)
 	if _, err := s.f.WriteAt(buf, int64(slot)*int64(s.slotSize)); err != nil {
 		return err
 	}
