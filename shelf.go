@@ -108,18 +108,26 @@ func (s *shelf) Close() error {
 		return nil
 	}
 	s.closed = true
+	if s.readonly {
+		return nil
+	}
+	var err error
+	setErr := func(e error) {
+		if err == nil && e != nil {
+			err = e
+		}
+	}
 	// Before closing the file, we overwrite all gaps with
 	// blank space in the headers. Later on, when opening, we can reconstruct the
 	// gaps by skimming through the slots and checking the headers.
 	hdr := make([]byte, 4)
-	var err error
 	for _, gap := range s.gaps {
-		if _, e := s.f.WriteAt(hdr, int64(gap)*int64(s.slotSize)); e != nil {
-			err = e
-		}
+		_, e := s.f.WriteAt(hdr, int64(gap)*int64(s.slotSize))
+		setErr(e)
 	}
 	s.gaps = s.gaps[:0]
-	s.f.Close()
+	setErr(s.f.Sync())
+	setErr(s.f.Close())
 	return err
 }
 
