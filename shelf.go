@@ -135,10 +135,17 @@ func (s *shelf) Close() error {
 // efficient than Delete + Put, since it does not require managing slot availability
 // but instead just overwrites in-place.
 func (s *shelf) Update(data []byte, slot uint64) error {
-	// Write data: header + blob
-	hdr := make([]byte, itemHeaderSize)
-	binary.BigEndian.PutUint32(hdr, uint32(len(data)))
-	return s.writeFile(hdr, data, slot)
+	if s.readonly {
+		return ErrReadonly
+	}
+	// Validations
+	if len(data) == 0 {
+		return ErrEmptyData
+	}
+	if have, max := uint32(len(data)+itemHeaderSize), s.slotSize; have > max {
+		return ErrOversized
+	}
+	return s.writeFile(data, slot)
 }
 
 // Put writes the given data and returns a slot identifier. The caller may
@@ -156,10 +163,7 @@ func (s *shelf) Put(data []byte) (uint64, error) {
 	}
 	// Find a free slot
 	slot := s.getSlot()
-	// Write data: header + blob
-	hdr := make([]byte, itemHeaderSize)
-	binary.BigEndian.PutUint32(hdr, uint32(len(data)))
-	if err := s.writeFile(hdr, data, slot); err != nil {
+	if err := s.writeFile(data, slot); err != nil {
 		return 0, err
 	}
 	return slot, nil
@@ -237,7 +241,7 @@ func (s *shelf) readFile(slot uint64) ([]byte, error) {
 	return slotData[itemHeaderSize : itemHeaderSize+itemSize], nil
 }
 
-func (s *shelf) writeFile(hdr, data []byte, slot uint64) error {
+func (s *shelf) writeFile(data []byte, slot uint64) error {
 	// We're read-locking this to prevent the file from being closed while we're
 	// writing to it
 	s.fileMu.RLock()
@@ -246,7 +250,9 @@ func (s *shelf) writeFile(hdr, data []byte, slot uint64) error {
 		return ErrClosed
 	}
 	buf := make([]byte, s.slotSize)
-	copy(buf, hdr[:])
+	// Write header
+	binary.BigEndian.PutUint32(buf, uint32(len(data)))
+	// Write data
 	copy(buf[itemHeaderSize:], data)
 	if _, err := s.f.WriteAt(buf, int64(slot)*int64(s.slotSize)); err != nil {
 		return err
