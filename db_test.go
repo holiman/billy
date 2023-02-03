@@ -68,10 +68,10 @@ func TestDBBasics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	k0 := db.Put(fill(0, 140))
-	k1 := db.Put(fill(1, 140))
-	k2 := db.Put(fill(2, 140))
-	k3 := db.Put(fill(3, 140))
+	k0, _ := db.Put(fill(0, 140))
+	k1, _ := db.Put(fill(1, 140))
+	k2, _ := db.Put(fill(2, 140))
+	k3, _ := db.Put(fill(3, 140))
 
 	if have, err := db.Get(k0); err != nil {
 		t.Fatal(err)

@@ -16,7 +16,7 @@ type Database interface {
 	// Put stores the data to the underlying database, and returns the key needed
 	// for later accessing the data.
 	// The data is copied by the database, and is safe to modify after the method returns
-	Put(data []byte) uint64
+	Put(data []byte) (uint64, error)
 
 	// Get retrieves the data stored at the given key.
 	Get(key uint64) ([]byte, error)
@@ -115,21 +115,20 @@ func Open(opts Options, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error
 // Put stores the data to the underlying database, and returns the key needed
 // for later accessing the data.
 // The data is copied by the database, and is safe to modify after the method returns
-func (db *DB) Put(data []byte) uint64 {
+func (db *DB) Put(data []byte) (uint64, error) {
 	// Search uses binary search to find and return the smallest index i
 	// in [0, n) at which f(i) is true,
 	index := sort.Search(len(db.shelves), func(i int) bool {
 		return int(db.shelves[i].slotSize) > len(data)
 	})
 	if index == len(db.shelves) {
-		panic(fmt.Sprintf("No shelf found for size %d", len(data)))
+		return 0, fmt.Errorf("no shelf found for size %d", len(data))
 	}
-	slot, err := db.shelves[index].Put(data)
-	if err != nil {
-		panic(fmt.Sprintf("Error in Put: %v\n", err))
+	if slot, err := db.shelves[index].Put(data); err != nil {
+		return 0, err
+	} else {
+		return slot | uint64(index)<<28, nil
 	}
-	slot |= uint64(index) << 28
-	return slot
 }
 
 // Get retrieves the data stored at the given key.

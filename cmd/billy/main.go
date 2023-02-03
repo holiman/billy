@@ -157,7 +157,7 @@ func doPut(ctx *cli.Context, data []byte) error {
 	if len(data) > int(max) {
 		return fmt.Errorf("data too large, max %d, was %d", max, len(data))
 	}
-	id := db.Put([]byte(data))
+	id, _ := db.Put([]byte(data))
 	fmt.Printf("%#08x %d\n", id, id)
 	return nil
 }
@@ -260,7 +260,7 @@ func serveCodec(conn net.Conn, db billy.Database, opts *dbParams) {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				continue
 			}
-			id := db.Put(data)
+			id, _ := db.Put(data)
 			_, _ = conn.Write([]byte(fmt.Sprintf("%#08x\n", id)))
 		case "GET ":
 			k, ok := big.NewInt(0).SetString(string(line[4:]), 0)
