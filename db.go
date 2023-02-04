@@ -32,11 +32,15 @@ type Database interface {
 }
 
 // SlotSizeFn is a method that acts as a "generator": a closure which, at each
-// invocation, should spit out the next slot-size. In order to create a DB with three
+// invocation, should spit out the next slot-size. In order to create a database with three
 // shelves invocation of the method should return e.g.
-// 10, false
-// 20, false
-// 30, true
+//
+//	10, false
+//	20, false
+//	30, true
+//
+// OBS! The slot size must take item header size (4 bytes) into account. So if you
+// plan to store 120 bytes, then the slot needs to be at least 124 bytes large.
 type SlotSizeFn func() (size uint32, done bool)
 
 // SlotSizePowerOfTwo is a SlotSizeFn which arranges the slots in shelves which
@@ -64,7 +68,7 @@ func SlotSizeLinear(size, count int) SlotSizeFn {
 	}
 }
 
-type DB struct {
+type database struct {
 	shelves []*shelf
 }
 
@@ -84,7 +88,7 @@ type Options struct {
 // (which is probably desirable), which can be done using the optional onData callback.
 func Open(opts Options, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error) {
 	var (
-		db           = &DB{}
+		db           = &database{}
 		prevSlotSize uint32
 		prevId       int
 		slotSize     uint32
@@ -115,11 +119,11 @@ func Open(opts Options, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error
 // Put stores the data to the underlying database, and returns the key needed
 // for later accessing the data.
 // The data is copied by the database, and is safe to modify after the method returns
-func (db *DB) Put(data []byte) (uint64, error) {
+func (db *database) Put(data []byte) (uint64, error) {
 	// Search uses binary search to find and return the smallest index i
 	// in [0, n) at which f(i) is true,
 	index := sort.Search(len(db.shelves), func(i int) bool {
-		return int(db.shelves[i].slotSize) > len(data)
+		return len(data)+itemHeaderSize <= int(db.shelves[i].slotSize)
 	})
 	if index == len(db.shelves) {
 		return 0, fmt.Errorf("no shelf found for size %d", len(data))
@@ -132,7 +136,7 @@ func (db *DB) Put(data []byte) (uint64, error) {
 }
 
 // Get retrieves the data stored at the given key.
-func (db *DB) Get(key uint64) ([]byte, error) {
+func (db *database) Get(key uint64) ([]byte, error) {
 	id := int(key>>28) & 0xfff
 	return db.shelves[id].Get(key & 0x0FFFFFFF)
 }
@@ -141,12 +145,12 @@ func (db *DB) Get(key uint64) ([]byte, error) {
 // overwritten by other data. After calling Delete with a given key, the results
 // from doing Get(key) is undefined -- it may return the same data, or some other
 // data, or fail with an error.
-func (db *DB) Delete(key uint64) error {
+func (db *database) Delete(key uint64) error {
 	id := int(key>>28) & 0xfff
 	return db.shelves[id].Delete(key & 0x00FFFFFF)
 }
 
-// OnDataFn is used to iterate the entire dataset in the DB.
+// OnDataFn is used to iterate the entire dataset in the database.
 // After the method returns, the content of 'data' will be modified by
 // the iterator, so it needs to be copied if it is to be used later.
 type OnDataFn func(key uint64, data []byte)
@@ -161,22 +165,22 @@ func wrapShelfDataFn(shelfId int, onData OnDataFn) onShelfDataFn {
 	}
 }
 
-// Iterate iterates through all the data in the DB, and invokes the
+// Iterate iterates through all the data in the database, and invokes the
 // given onData method for every element
-func (db *DB) Iterate(onData OnDataFn) {
+func (db *database) Iterate(onData OnDataFn) {
 	for i, b := range db.shelves {
 		b.Iterate(wrapShelfDataFn(i, onData))
 	}
 }
 
-func (db *DB) Limits() (uint32, uint32) {
+func (db *database) Limits() (uint32, uint32) {
 	smallest := db.shelves[0].slotSize
 	largest := db.shelves[len(db.shelves)-1].slotSize
 	return smallest, largest
 }
 
 // Close implements io.Closer
-func (db *DB) Close() error {
+func (db *database) Close() error {
 	var err error
 	for _, shelf := range db.shelves {
 		if e := shelf.Close(); e != nil {

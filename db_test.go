@@ -134,7 +134,31 @@ func TestCustomSlotSizesOk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if have, want := len(db.(*DB).shelves), 3; have != want {
+	if have, want := len(db.(*database).shelves), 3; have != want {
 		t.Fatalf("have %d buckets, want %d", have, want)
+	}
+}
+
+func TestSizes(t *testing.T) {
+	a := 0
+	db, err := Open(Options{Path: t.TempDir()}, func() (uint32, bool) {
+		// Return 10, 20, 30
+		ret := 10 * (1 + a)
+		a++
+		return uint32(ret), ret >= 30
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i < 35; i++ {
+		data := make([]byte, i)
+		_, err := db.Put(data)
+		if i >= 27 && err != nil {
+			// It should reject size 27  and onwards
+			continue
+		}
+		if err != nil {
+			t.Errorf("test %d: %v", i, err)
+		}
 	}
 }
