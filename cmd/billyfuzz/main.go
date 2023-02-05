@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -56,64 +55,48 @@ func main() {
 
 const verbose = false
 
-func doOpenDb(ctx *cli.Context) (billy.Database, map[uint64][]byte, error) {
-	var kvdata = make(map[uint64][]byte)
+func doOpenDb(ctx *cli.Context, onData billy.OnDataFn) (billy.Database, error) {
 	db, err := billy.Open(billy.Options{Path: ctx.String("path")},
 		billy.SlotSizePowerOfTwo(uint32(ctx.Int("min")), uint32(ctx.Int("max"))),
-		func(key uint64, data []byte) {
-			if verbose {
-				fmt.Printf("init key %x val %x\n", key, data[:20])
-			}
-			cpy := make([]byte, len(data))
-			copy(cpy, data)
-			kvdata[key] = cpy
-		})
+		onData)
 	if err == nil {
 		fmt.Fprintf(os.Stderr, "Opened %v\n", ctx.String("path"))
 	}
-	for key, want := range kvdata {
-		if verbose {
-			fmt.Printf("check key %x want %x\n", key, want[:20])
-		}
-		have, err := db.Get(key)
-		if err != nil {
-			panic(err)
-		}
-		if !bytes.Equal(have, want) {
-			panic(fmt.Sprintf("key %v\nhave %x\n, want %x\n", key, have, want))
-		}
-	}
-	return db, kvdata, err
+	return db, err
 }
 
 func doFuzz(ctx *cli.Context) error {
-	db, kvdata, err := doOpenDb(ctx)
+	var (
+		hasher = sha256.New()
+		hashes = make(map[uint64]string)
+		onData = func(key uint64, data []byte) {
+			if verbose {
+				fmt.Printf("init key %x val %x\n", key, data[:20])
+			}
+			hasher.Reset()
+			hashes[key] = hex.EncodeToString(hasher.Sum(data))
+		}
+		db, err = doOpenDb(ctx, onData)
+	)
 	if err != nil {
 		return err
 	}
 	var (
-		min, max  = db.Limits()
 		ops       int
+		lastLog   time.Time
+		min, max  = db.Limits()
 		abortChan = make(chan os.Signal, 1)
 		timeout   = time.NewTimer(ctx.Duration("timeout"))
-		facts     = make(map[uint64]string)
-		hasher    = sha256.New()
-		lastLog   time.Time
-		stopper   = time.NewTicker(4 * time.Second)
+		stopper   = time.NewTicker(4 * time.Second) // Close every 4 seconds
 	)
-	for key, data := range kvdata {
-		hasher.Reset()
-		facts[key] = hex.EncodeToString(hasher.Sum(data))
-	}
-	kvdata = nil
 	signal.Notify(abortChan, os.Interrupt)
 	for {
 		op := rand.Intn(3)
-		if len(facts) < 1000 && op == 2 {
+		if len(hashes) < 1000 && op == 2 {
 			// avoid delete if we're too small
 			continue
 		}
-		if len(facts) > 5000 && op == 0 {
+		if len(hashes) > 5000 && op == 0 {
 			// avoid put if we're too large
 			continue
 		}
@@ -131,14 +114,14 @@ func doFuzz(ctx *cli.Context) error {
 				panic(err)
 			}
 			//fmt.Printf("Wrote %d bytes data to key %d\n", len(data), key)
-			facts[key] = sum
+			hashes[key] = sum
 		case 1: // GET
 			var key uint64
 			var want string
-			if len(facts) == 0 {
+			if len(hashes) == 0 {
 				continue
 			}
-			for key, want = range facts {
+			for key, want = range hashes {
 				break
 			}
 			//fmt.Printf("Checking %d bytes data at key %d\n", len(want), key)
@@ -154,41 +137,38 @@ func doFuzz(ctx *cli.Context) error {
 			}
 		case 2: // DELETE
 			var key uint64
-			for key = range facts {
+			for key = range hashes {
 				break
 			}
 			//fmt.Printf("Deleting data at key %d\n", key)
 			if err := db.Delete(key); err != nil {
 				panic(err)
 			}
-			delete(facts, key)
+			delete(hashes, key)
 		}
 		if time.Since(lastLog) > 8*time.Second {
-			fmt.Fprintf(os.Stderr, "%d ops, %d keys active\n", ops, len(facts))
+			fmt.Fprintf(os.Stderr, "%d ops, %d keys active\n", ops, len(hashes))
 			lastLog = time.Now()
 		}
 		select {
 		case <-abortChan:
-			fmt.Fprintf(os.Stderr, "Shutting down\n")
+			fmt.Fprintf(os.Stderr, "Aborted, shutting down\n")
 			db.Close()
 			return nil
 		case <-timeout.C:
-			fmt.Fprintf(os.Stderr, "Shutting down\n")
+			fmt.Fprintf(os.Stderr, "Timeout, shutting down\n")
 			db.Close()
 			return nil
 		case <-stopper.C:
-			fmt.Fprintf(os.Stderr, "Reopening db, ops %d, keys %d\n", ops, len(facts))
+			fmt.Fprintf(os.Stderr, "Reopening db, ops %d, keys %d\n", ops, len(hashes))
 			db.Close()
-			db, kvdata, err = doOpenDb(ctx)
+			for k, _ := range hashes {
+				delete(hashes, k)
+			}
+			db, err = doOpenDb(ctx, onData)
 			if err != nil {
 				return err
 			}
-			facts = make(map[uint64]string)
-			for key, data := range kvdata {
-				hasher.Reset()
-				facts[key] = hex.EncodeToString(hasher.Sum(data))
-			}
-			kvdata = nil
 		default:
 		}
 	}
