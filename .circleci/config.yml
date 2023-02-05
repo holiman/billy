@@ -30,6 +30,9 @@ jobs:
       - run:
           name: "Lint"
           command: golangci-lint run
+      - run:
+          name: "Build all cmds"
+          command: go build -v ./cmd/...
       - test:
           arch: "amd64"
       - test:
