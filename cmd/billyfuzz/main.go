@@ -162,7 +162,7 @@ func doFuzz(ctx *cli.Context) error {
 		case <-stopper.C:
 			fmt.Fprintf(os.Stderr, "Reopening db, ops %d, keys %d\n", ops, len(hashes))
 			db.Close()
-			for k, _ := range hashes {
+			for k := range hashes {
 				delete(hashes, k)
 			}
 			db, err = doOpenDb(ctx, onData)
