@@ -105,6 +105,7 @@ func doFuzz(ctx *cli.Context) error {
 		hasher.Reset()
 		facts[key] = hex.EncodeToString(hasher.Sum(data))
 	}
+	kvdata = nil
 	signal.Notify(abortChan, os.Interrupt)
 	for {
 		op := rand.Intn(3)
@@ -187,6 +188,7 @@ func doFuzz(ctx *cli.Context) error {
 				hasher.Reset()
 				facts[key] = hex.EncodeToString(hasher.Sum(data))
 			}
+			kvdata = nil
 		default:
 		}
 	}
