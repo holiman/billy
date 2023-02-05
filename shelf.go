@@ -351,6 +351,7 @@ func (s *shelf) compact(onData onShelfDataFn) {
 	// readSlot reads data from the given slot and returns the declared size.
 	// The data is placed into 'buf'
 	readSlot := func(slot uint64) uint32 {
+		//fmt.Printf("compaction: Reading at  slot %d\n", slot)
 		n, _ := s.f.ReadAt(buf, int64(slot)*int64(s.slotSize))
 		if n < itemHeaderSize {
 			panic(fmt.Sprintf("failed reading slot %d, need %d bytes, got %d", slot, itemHeaderSize, n))
@@ -358,12 +359,15 @@ func (s *shelf) compact(onData onShelfDataFn) {
 		return binary.BigEndian.Uint32(buf)
 	}
 	writeBuf := func(slot uint64) {
+		//fmt.Printf("compaction: Writing to slot %d\n", slot)
 		n, _ := s.f.WriteAt(buf, int64(slot)*int64(s.slotSize))
 		if n < len(buf) {
 			panic(fmt.Sprintf("write too short, wrote %d bytes, wanted to write %d", n, len(buf)))
 		}
 	}
 
+	// nextGap searches upwards from the given slot (inclusive),
+	// to find the first gap.
 	nextGap := func(slot uint64) uint64 {
 		for ; slot < s.tail; slot++ {
 			if size := readSlot(slot); size == 0 {
@@ -375,6 +379,8 @@ func (s *shelf) compact(onData onShelfDataFn) {
 		}
 		return slot
 	}
+	// prevData searches downwards from the given slot (inclusive), to find
+	// the next data-filled slot.
 	prevData := func(slot, gap uint64) uint64 {
 		for ; slot > gap && slot > 0; slot-- {
 			if size := readSlot(slot); size != 0 {
@@ -386,12 +392,12 @@ func (s *shelf) compact(onData onShelfDataFn) {
 				return slot
 			}
 		}
-		return 0
+		return slot
 	}
 	var (
-		gapSlot  = uint64(0)
-		dataSlot = s.tail
-		empty    = s.tail == 0
+		gapped = uint64(0)
+		filled = s.tail
+		empty  = s.tail == 0
 	)
 	// The compaction / iteration goes through the file two directions:
 	// - forwards: search for gaps,
@@ -408,24 +414,26 @@ func (s *shelf) compact(onData onShelfDataFn) {
 	if s.readonly {
 		// Don't (try to) mutate the file in readonly mode, but still
 		// iterate for the ondata callbacks.
-		for gapSlot <= s.tail {
-			gapSlot = nextGap(gapSlot)
-			gapSlot++
+		for gapped <= s.tail {
+			gapped = nextGap(gapped)
+			gapped++
 		}
 		return
 	}
-	dataSlot--
+	filled--
 	firstTail := s.tail
-	for gapSlot <= dataSlot {
-		gapSlot = nextGap(gapSlot)
-		if gapSlot >= s.tail {
-			break // done here
+	for gapped <= filled {
+		// Find next gap. If we've reached the tail, we're done here.
+		gapped = nextGap(gapped)
+		if gapped >= s.tail {
+			break
 		}
-		dataSlot = prevData(dataSlot, gapSlot)
+		// We have a gap. Now, find the last piece of data to move to that gap
+		filled = prevData(filled, gapped)
 		// dataSlot is now the empty area
-		s.tail = dataSlot
-		gapSlot++
-		dataSlot--
+		s.tail = filled
+		gapped++
+		filled--
 	}
 	if firstTail != s.tail {
 		// Some gc was performed. gapSlot is the first empty slot now
@@ -433,6 +441,7 @@ func (s *shelf) compact(onData onShelfDataFn) {
 			// TODO handle better?
 			fmt.Fprintf(os.Stderr, "Warning: truncation failed: err %v", err)
 		}
+		//fmt.Printf("Truncated shelf from %d to %d\n", firstTail, s.tail)
 	}
 }
 

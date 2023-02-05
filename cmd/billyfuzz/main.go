@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -53,17 +54,34 @@ func main() {
 	}
 }
 
+const verbose = false
+
 func doOpenDb(ctx *cli.Context) (billy.Database, map[uint64][]byte, error) {
 	var kvdata = make(map[uint64][]byte)
 	db, err := billy.Open(billy.Options{Path: ctx.String("path")},
 		billy.SlotSizePowerOfTwo(uint32(ctx.Int("min")), uint32(ctx.Int("max"))),
 		func(key uint64, data []byte) {
+			if verbose {
+				fmt.Printf("init key %x val %x\n", key, data[:20])
+			}
 			cpy := make([]byte, len(data))
 			copy(cpy, data)
 			kvdata[key] = cpy
 		})
 	if err == nil {
 		fmt.Fprintf(os.Stderr, "Opened %v\n", ctx.String("path"))
+	}
+	for key, want := range kvdata {
+		if verbose {
+			fmt.Printf("check key %x want %x\n", key, want[:20])
+		}
+		have, err := db.Get(key)
+		if err != nil {
+			panic(err)
+		}
+		if !bytes.Equal(have, want) {
+			panic(fmt.Sprintf("key %v\nhave %x\n, want %x\n", key, have, want))
+		}
 	}
 	return db, kvdata, err
 }
