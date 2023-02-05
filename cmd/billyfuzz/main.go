@@ -89,6 +89,7 @@ func doFuzz(ctx *cli.Context) error {
 		timeout   = time.NewTimer(ctx.Duration("timeout"))
 		stopper   = time.NewTicker(4 * time.Second) // Close every 4 seconds
 	)
+	max = max - 4 // Adjust for item header size.
 	signal.Notify(abortChan, os.Interrupt)
 	for {
 		op := rand.Intn(3)
