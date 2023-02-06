@@ -14,10 +14,9 @@ import (
 	"sync"
 )
 
-// itemHeaderSize is 4 bytes: each piece of data is stored as
-// [ uint32: size |  <data> ]
 const (
-	itemHeaderSize = 4
+	curVersion     = uint16(0)
+	itemHeaderSize = 4 // size of the per-item header
 	maxSlotSize    = uint64(0xffffffff)
 	// minSlotSize is the minimum size of a slot. It needs to fit the header,
 	// and then some actual data too.
@@ -33,22 +32,36 @@ var (
 	ErrCorruptData = errors.New("corrupt data")
 )
 
-// A shelf represents a collection of similarly-sized items. The shelf uses
+// shelf represents a collection of similarly-sized items. The shelf uses
 // a number of slots, where each slot is of the exact same size.
 type shelf struct {
-	id       string
 	slotSize uint32 // Size of the slots, up to 4GB
 
-	gapsMu sync.Mutex // Mutex for operating on 'gaps' and 'tail'
-	// A slice of indices to slots that are free to use. The
+	// gaps is a slice of indices to slots that are free to use. The
 	// gaps are always sorted lowest numbers first.
-	gaps sortedUniqueInts
-	tail uint64 // First free slot
+	gaps   sortedUniqueInts
+	gapsMu sync.Mutex // Mutex for operating on 'gaps' and 'tail'.
 
-	fileMu   sync.RWMutex // Mutex for file operations on 'f' (rw versus Close) and closed
-	f        *os.File     // The file backing the data
+	count uint64 // count holds the number of items on the shelf.
+
+	f      *os.File     // f is the file where data is persisted.
+	fileMu sync.RWMutex // Mutex for file operations on 'f' (rw versus Close) and closed.
+
 	closed   bool
 	readonly bool
+}
+
+var (
+	Magic           = [5]byte{'b', 'i', 'l', 'l', 'y'}
+	ShelfHeaderSize = binary.Size(shelfHeader{})
+)
+
+// shelfHeader is the file-header for a shelf file. It has a 'magic' "billy" prefix,
+// followed by version and slotsize.
+type shelfHeader struct {
+	Magic    [5]byte // "billy'
+	Version  uint16
+	Slotsize uint32
 }
 
 // openShelf opens a (new or existing) shelf with the given slot size.
@@ -65,34 +78,58 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 		return nil, fmt.Errorf("not a directory: '%v'", path)
 	}
 	var (
-		id     = fmt.Sprintf("bkt_%08d.bag", slotSize)
-		f      *os.File
-		err    error
-		nSlots uint64
+		fileSize int
+		h        = shelfHeader{Magic, curVersion, slotSize}
+		fname    = fmt.Sprintf("bkt_%08d.bag", slotSize)
+		flags    = os.O_RDWR | os.O_CREATE
 	)
 	if readonly {
-		f, err = os.OpenFile(filepath.Join(path, fmt.Sprintf("%v", id)), os.O_RDONLY, 0666)
-	} else {
-		f, err = os.OpenFile(filepath.Join(path, fmt.Sprintf("%v", id)), os.O_RDWR|os.O_CREATE, 0666)
+		flags = os.O_RDONLY
 	}
+	f, err := os.OpenFile(filepath.Join(path, fname), flags, 0666)
 	if err != nil {
 		return nil, err
 	}
 	if stat, err := f.Stat(); err != nil {
+		_ = f.Close()
 		return nil, err
 	} else {
-		size := stat.Size()
-		nSlots = uint64((size + int64(slotSize) - 1) / int64(slotSize))
+		fileSize = int(stat.Size())
+	}
+	if fileSize == 0 {
+		err = binary.Write(f, binary.BigEndian, &h)
+	} else {
+		err = binary.Read(f, binary.BigEndian, &h)
+	}
+	if err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	switch {
+	case h.Magic != Magic:
+		err = errors.New("missing magic")
+	case h.Version != curVersion:
+		err = fmt.Errorf("wrong version: %d", h.Version)
+	case h.Slotsize != slotSize:
+		err = fmt.Errorf("wrong slotsize, file:%d, need:%d", h.Slotsize, slotSize)
+	}
+	if err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	dataSize := fileSize
+	if fileSize >= int(ShelfHeaderSize) {
+		dataSize = fileSize - int(ShelfHeaderSize)
 	}
 	sh := &shelf{
-		id:       id,
 		slotSize: slotSize,
-		tail:     nSlots,
+		count:    uint64((dataSize + int(slotSize) - 1) / int(slotSize)),
 		f:        f,
 		readonly: readonly,
 	}
 	// Compact + iterate
 	if err := sh.compact(onData); err != nil {
+		_ = f.Close()
 		return nil, err
 	}
 	return sh, nil
@@ -124,8 +161,7 @@ func (s *shelf) Close() error {
 	// gaps by skimming through the slots and checking the headers.
 	hdr := make([]byte, 4)
 	for _, gap := range s.gaps {
-		_, e := s.f.WriteAt(hdr, int64(gap)*int64(s.slotSize))
-		setErr(e)
+		setErr(s.writeSlot(hdr, gap))
 	}
 	s.gaps = s.gaps[:0]
 	setErr(s.f.Sync())
@@ -147,7 +183,7 @@ func (s *shelf) Update(data []byte, slot uint64) error {
 	if have, max := uint32(len(data)+itemHeaderSize), s.slotSize; have > max {
 		return ErrOversized
 	}
-	return s.writeFile(data, slot)
+	return s.persist(data, slot)
 }
 
 // Put writes the given data and returns a slot identifier. The caller may
@@ -165,7 +201,7 @@ func (s *shelf) Put(data []byte) (uint64, error) {
 	}
 	// Find a free slot
 	slot := s.getSlot()
-	if err := s.writeFile(data, slot); err != nil {
+	if err := s.persist(data, slot); err != nil {
 		return 0, err
 	}
 	return slot, nil
@@ -186,8 +222,8 @@ func (s *shelf) Delete(slot uint64) error {
 	s.gapsMu.Lock()
 	defer s.gapsMu.Unlock()
 	// Can't delete outside of the file
-	if slot >= s.tail {
-		return fmt.Errorf("%w: shelf %d, slot %d, tail %d", ErrBadIndex, s.slotSize, slot, s.tail)
+	if slot >= s.count {
+		return fmt.Errorf("%w: shelf %d, slot %d, tail %d", ErrBadIndex, s.slotSize, slot, s.count)
 	}
 	// We try to keep writes going to the early parts of the file, to have the
 	// possibility of trimming the file when/if the tail becomes unused.
@@ -195,20 +231,19 @@ func (s *shelf) Delete(slot uint64) error {
 
 	// s.tail is the first empty location. If the gaps has reached to one below
 	// the tail, then we can start truncating
-	if s.tail == s.gaps.Last()+1 {
+	if s.count == s.gaps.Last()+1 {
 		// we can delete a portion of the file
 		s.fileMu.Lock()
 		defer s.fileMu.Unlock()
-		if s.closed {
-			// Undo (not really important, but correct) and back out again
+		if s.closed { // Undo (not really important, but correct) and back out again
 			s.gaps = s.gaps[:0]
 			return ErrClosed
 		}
-		for len(s.gaps) > 0 && s.tail == s.gaps.Last()+1 {
+		for len(s.gaps) > 0 && s.count == s.gaps.Last()+1 {
 			s.gaps = s.gaps[:len(s.gaps)-1]
-			s.tail--
+			s.count--
 		}
-		if err := s.f.Truncate(int64(s.tail * uint64(s.slotSize))); err != nil {
+		if err := s.f.Truncate(int64(ShelfHeaderSize) + int64(s.count*uint64(s.slotSize))); err != nil {
 			return err
 		}
 	}
@@ -245,18 +280,26 @@ func (s *shelf) readFile(slot uint64) ([]byte, error) {
 func (s *shelf) readSlot(buf []byte, slot uint64) ([]byte, error) {
 	// Read the entire slot at once -- this might mean we read a bit more
 	// than strictly necessary, but it saves us one syscall.
-	if _, err := s.f.ReadAt(buf, int64(slot)*int64(s.slotSize)); err != nil {
+	if _, err := s.f.ReadAt(buf, int64(ShelfHeaderSize)+int64(slot)*int64(s.slotSize)); err != nil {
 		return nil, err
 	}
-	size := binary.BigEndian.Uint32(buf)
-	if itemHeaderSize+size > uint32(s.slotSize) {
-		return nil, fmt.Errorf("%w: item size %d, slot size %d", ErrCorruptData,
-			itemHeaderSize+size, s.slotSize)
+	size := binary.BigEndian.Uint32(buf) + itemHeaderSize
+	if size > uint32(s.slotSize) {
+		return nil, fmt.Errorf("%w: item size %d, slot size %d", ErrCorruptData, size, s.slotSize)
 	}
-	return buf[itemHeaderSize : itemHeaderSize+size], nil
+	return buf[itemHeaderSize:size], nil
 }
 
-func (s *shelf) writeFile(data []byte, slot uint64) error {
+// writeSlot writes the given data to the slot. This method assumes that the
+// fileMu is read-locked.
+func (s *shelf) writeSlot(data []byte, slot uint64) error {
+	_, err := s.f.WriteAt(data, int64(ShelfHeaderSize)+int64(slot)*int64(s.slotSize))
+	return err
+}
+
+// persist acquires the file rlock, constructs the slot header and writes the
+// data to file.
+func (s *shelf) persist(data []byte, slot uint64) error {
 	// We're read-locking this to prevent the file from being closed while we're
 	// writing to it
 	s.fileMu.RLock()
@@ -269,10 +312,7 @@ func (s *shelf) writeFile(data []byte, slot uint64) error {
 	binary.BigEndian.PutUint32(buf, uint32(len(data)))
 	// Write data
 	copy(buf[itemHeaderSize:], data)
-	if _, err := s.f.WriteAt(buf, int64(slot)*int64(s.slotSize)); err != nil {
-		return err
-	}
-	return nil
+	return s.writeSlot(buf, slot)
 }
 
 func (s *shelf) getSlot() uint64 {
@@ -286,8 +326,8 @@ func (s *shelf) getSlot() uint64 {
 		return slot
 	}
 	// No gaps available: Expand the tail
-	slot = s.tail
-	s.tail++
+	slot = s.count
+	s.count++
 	return slot
 }
 
@@ -317,7 +357,7 @@ func (s *shelf) Iterate(onData onShelfDataFn) error {
 	if gapIdx < len(s.gaps) {
 		nextGap = s.gaps[gapIdx]
 	}
-	for slot := uint64(0); slot < s.tail; slot++ {
+	for slot := uint64(0); slot < s.count; slot++ {
 		if slot == nextGap {
 			// We've reached a gap. Skip it
 			gapIdx++
@@ -349,7 +389,7 @@ func (s *shelf) compact(onData onShelfDataFn) error {
 	// nextGap searches upwards from the given slot (inclusive),
 	// to find the first gap.
 	nextGap := func(slot uint64) (uint64, error) {
-		for ; slot < s.tail; slot++ {
+		for ; slot < s.count; slot++ {
 			data, err := s.readSlot(buf, slot)
 			if err != nil {
 				return 0, err
@@ -373,8 +413,7 @@ func (s *shelf) compact(onData onShelfDataFn) error {
 			}
 			if len(data) != 0 {
 				// We've found a slot of data. Copy it to the gap
-				_, err := s.f.WriteAt(buf, int64(gap)*int64(s.slotSize))
-				if err != nil {
+				if err := s.writeSlot(buf, gap); err != nil {
 					return 0, err
 				}
 				if onData != nil {
@@ -387,8 +426,8 @@ func (s *shelf) compact(onData onShelfDataFn) error {
 	}
 	var (
 		gapped = uint64(0)
-		filled = s.tail
-		empty  = s.tail == 0
+		filled = s.count
+		empty  = s.count == 0
 		err    error
 	)
 	// The compaction / iteration goes through the file two directions:
@@ -406,7 +445,7 @@ func (s *shelf) compact(onData onShelfDataFn) error {
 	if s.readonly {
 		// Don't (try to) mutate the file in readonly mode, but still
 		// iterate for the ondata callbacks.
-		for gapped <= s.tail {
+		for gapped <= s.count {
 			gapped, err = nextGap(gapped)
 			if err != nil {
 				return err
@@ -416,13 +455,13 @@ func (s *shelf) compact(onData onShelfDataFn) error {
 		return nil
 	}
 	filled--
-	firstTail := s.tail
+	firstTail := s.count
 	for gapped <= filled {
 		// Find next gap. If we've reached the tail, we're done here.
 		if gapped, err = nextGap(gapped); err != nil {
 			return err
 		}
-		if gapped >= s.tail {
+		if gapped >= s.count {
 			break
 		}
 		// We have a gap. Now, find the last piece of data to move to that gap
@@ -430,13 +469,13 @@ func (s *shelf) compact(onData onShelfDataFn) error {
 			return err
 		}
 		// dataSlot is now the empty area
-		s.tail = filled
+		s.count = filled
 		gapped++
 		filled--
 	}
-	if firstTail != s.tail {
+	if firstTail != s.count {
 		// Some gc was performed. gapSlot is the first empty slot now
-		if err := s.f.Truncate(int64(s.tail * uint64(s.slotSize))); err != nil {
+		if err := s.f.Truncate(int64(ShelfHeaderSize) + int64(s.count*uint64(s.slotSize))); err != nil {
 			return fmt.Errorf("truncation failed: %v", err)
 		}
 	}

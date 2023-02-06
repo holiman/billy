@@ -15,6 +15,7 @@ import (
 	"testing"
 )
 
+// getBlob returns a byte-slice filled with the given fill-byte
 func getBlob(fill byte, size int) []byte {
 	buf := make([]byte, size)
 	for i := range buf {
@@ -36,42 +37,46 @@ func checkBlob(fill byte, blob []byte, size int) error {
 }
 
 func TestBasics(t *testing.T) {
-	// can't open non-existing directory
-	if _, err := openShelf("/baz/bonk/foobar/gazonk", 10, nil, false); err == nil {
-		t.Fatal("expected error")
+	{ // Pre-instance failures
+		// can't open non-existing directory
+		if _, err := openShelf("/baz/bonk/foobar/gazonk", 10, nil, false); err == nil {
+			t.Fatal("expected error")
+		}
+		// Can't point path to a file
+		if _, err := openShelf("./README.md", 10, nil, false); err == nil {
+			t.Fatal("expected error")
+		}
 	}
-	// Can't point path to a file
-	if _, err := openShelf("./README.md", 10, nil, false); err == nil {
-		t.Fatal("expected error")
-	}
-
 	b, cleanup := setup(t)
 	defer cleanup()
-
-	// Should reject empty data
-	if _, err := b.Put([]byte{}); !errors.Is(err, ErrEmptyData) {
-		t.Fatal("expected error")
+	{ // Tests on Put
+		// Should reject empty data
+		if _, err := b.Put([]byte{}); !errors.Is(err, ErrEmptyData) {
+			t.Fatal("expected error")
+		}
+		// Should reject nil data
+		if _, err := b.Put(nil); !errors.Is(err, ErrEmptyData) {
+			t.Fatal("expected error")
+		}
+		// Should reject oversized data (max size 200)
+		if _, err := b.Put(make([]byte, 201)); !errors.Is(err, ErrOversized) {
+			t.Fatal("expected error")
+		}
 	}
-	if _, err := b.Put(nil); !errors.Is(err, ErrEmptyData) {
-		t.Fatal("expected error")
-	}
-	// max size 200, check oversized data
-	if _, err := b.Put(make([]byte, 201)); !errors.Is(err, ErrOversized) {
-		t.Fatal("expected error")
-	}
-
 	aa, _ := b.Put(getBlob(0x0a, 150))
-
-	// Should reject empty data
-	if err := b.Update([]byte{}, aa); !errors.Is(err, ErrEmptyData) {
-		t.Fatal("expected error")
-	}
-	if err := b.Update(nil, aa); !errors.Is(err, ErrEmptyData) {
-		t.Fatal("expected error")
-	}
-	// max size 200, check oversized data
-	if err := b.Update(make([]byte, 201), aa); !errors.Is(err, ErrOversized) {
-		t.Fatal("expected error")
+	{ // Tests on Update
+		// Should reject empty data
+		if err := b.Update([]byte{}, aa); !errors.Is(err, ErrEmptyData) {
+			t.Fatal("expected error")
+		}
+		// Should reject nil data
+		if err := b.Update(nil, aa); !errors.Is(err, ErrEmptyData) {
+			t.Fatal("expected error")
+		}
+		// max size 200, check oversized data
+		if err := b.Update(make([]byte, 201), aa); !errors.Is(err, ErrOversized) {
+			t.Fatal("expected error")
+		}
 	}
 
 	bb, _ := b.Put(getBlob(0x0b, 151))
@@ -163,25 +168,35 @@ func TestBasics(t *testing.T) {
 	}
 }
 
-func writeShelfFile(name string, size int, slotData []byte) error {
-	var shelfData = make([]byte, len(slotData)*size)
+func writeShelfFile(name string, slotSize int, slotData []byte) error {
+
+	f, err := os.Create(name)
+	if err != nil {
+		return err
+	}
+	binary.Write(f, binary.BigEndian, &shelfHeader{
+		Magic:    Magic,
+		Version:  curVersion,
+		Slotsize: uint32(slotSize),
+	})
+
 	// Fill all the items
 	for i, byt := range slotData {
 		if byt == 0 {
 			continue
 		}
-		data := getBlob(byt, size-itemHeaderSize)
+		data := getBlob(byt, slotSize-itemHeaderSize)
+		slotdata := make([]byte, slotSize)
 		// write header
-		binary.BigEndian.PutUint32(shelfData[i*size:], uint32(size-itemHeaderSize))
+		binary.BigEndian.PutUint32(slotdata, uint32(slotSize-itemHeaderSize))
+		copy(slotdata[itemHeaderSize:], data)
 		// write data
-		copy(shelfData[i*size+itemHeaderSize:], data)
+		_, err = f.WriteAt(slotdata, int64(ShelfHeaderSize)+int64(i)*int64(slotSize))
+		if err != nil {
+			return err
+		}
 	}
-	f, err := os.Create(name)
-	if err != nil {
-		return err
-	}
-	_, err = f.Write(shelfData)
-	return err
+	return nil
 }
 
 func checkIdentical(fileA, fileB string) error {
@@ -246,15 +261,15 @@ func TestErrOnClose(t *testing.T) {
 	a, cleanup := setup(t)
 	defer cleanup()
 	// Write something and delete it again, to have a gap
-	if have, want := a.tail, uint64(0); have != want {
+	if have, want := a.count, uint64(0); have != want {
 		t.Fatalf("tail error have %v want %v", have, want)
 	}
 	_, _ = a.Put(make([]byte, 3))
-	if have, want := a.tail, uint64(1); have != want {
+	if have, want := a.count, uint64(1); have != want {
 		t.Fatalf("tail error have %v want %v", have, want)
 	}
 	_, _ = a.Put(make([]byte, 3))
-	if have, want := a.tail, uint64(2); have != want {
+	if have, want := a.count, uint64(2); have != want {
 		t.Fatalf("tail error have %v want %v", have, want)
 	}
 	if err := a.Delete(0); err != nil {
@@ -538,47 +553,83 @@ func TestShelfRO(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-
 	p := t.TempDir()
-
 	a, err := openShelf(p, 20, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
+	checkSize := func(want int) {
+		finfo, _ := a.f.Stat()
+		if have := finfo.Size(); int(have) != want {
+			t.Fatalf("want size %d, have %d", want, have)
+		}
+	}
+	checkSize(ShelfHeaderSize)
 	// Write 100 items
 	for i := 0; i < 100; i++ {
 		_, _ = a.Put(make([]byte, 15)) // id 1, size 6
 	}
-	finfo, _ := a.f.Stat()
-	if have, want := finfo.Size(), 2000; int(have) != want {
-		t.Fatalf("want size %d, have %d", want, have)
-	}
+	checkSize(2000 + ShelfHeaderSize)
 	// Delete half of them, last item first
 	for i := 99; i >= 50; i-- {
 		_ = a.Delete(uint64(i))
 	}
-	finfo, _ = a.f.Stat()
-	if have, want := finfo.Size(), 1000; int(have) != want {
-		t.Fatalf("want size %d, have %d", want, have)
-	}
+	checkSize(1000 + ShelfHeaderSize)
 	// Delete every second remaining item
 	for i := 50; i >= 0; i -= 2 {
 		_ = a.Delete(uint64(i))
 	}
-	finfo, _ = a.f.Stat()
-	if have, want := finfo.Size(), 1000; int(have) != want {
-		t.Fatalf("want size %d, have %d", want, have)
-	}
-	var have string
-	want := "1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39,41,43,45,47,49,"
+	checkSize(1000 + ShelfHeaderSize)
+	var (
+		have string
+		want = "1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39,41,43,45,47,49,"
+	)
 	err = a.Iterate(func(slot uint64, data []byte) {
 		have = have + fmt.Sprintf("%d,", slot)
-		//		fmt.Printf("slot %d exists\n", slot)
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if have != want {
 		t.Fatalf("have: %v\nwant: %v\n", have, want)
+	}
+}
+
+func TestVersion(t *testing.T) {
+	// header for 255-sized shelf
+	var (
+		size  = uint32(100)
+		fname = fmt.Sprintf("bkt_%08d.bag", 100)
+		p     = t.TempDir()
+	)
+	for i, tc := range []struct {
+		hdr  []byte
+		want string
+	}{
+		{ // Wrong magic
+			hdr:  []byte{'b', 'o', 'l', 'l', 'y', 0x00, 0x00, 0x00, 0x00, 0x00, 100},
+			want: "missing magic",
+		},
+		{ // Wrong size
+			hdr:  []byte{'b', 'i', 'l', 'l', 'y', 0x00, 0x00, 0x00, 0x00, 0x00, 0xff},
+			want: "wrong slotsize, file:255, need:100",
+		},
+		{ // Future version
+			hdr:  []byte{'b', 'i', 'l', 'l', 'y', 0x05, 0x39, 0x00, 0x00, 0x00, 100},
+			want: "wrong version: 1337",
+		},
+		{ // Too short
+			hdr:  []byte{'b'},
+			want: "unexpected EOF",
+		},
+	} {
+		os.WriteFile(filepath.Join(p, fname), tc.hdr, 0o777)
+		_, err := openShelf(p, size, nil, false)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		if have := err.Error(); have != tc.want {
+			t.Fatalf("test %d: wrong error, have '%v' want '%v'", i, have, tc.want)
+		}
 	}
 }
