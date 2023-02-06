@@ -235,8 +235,9 @@ func (s *shelf) readFile(slot uint64) ([]byte, error) {
 	}
 	// Check data size
 	itemSize := binary.BigEndian.Uint32(slotData)
-	if itemHeaderSize+itemSize >= uint32(s.slotSize) {
-		return nil, ErrCorruptData
+	if itemHeaderSize+itemSize > uint32(s.slotSize) {
+		return nil, fmt.Errorf("%w: item size %d, slot size %d", ErrCorruptData,
+			itemHeaderSize+itemSize, s.slotSize)
 	}
 	return slotData[itemHeaderSize : itemHeaderSize+itemSize], nil
 }
