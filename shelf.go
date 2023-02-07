@@ -448,10 +448,8 @@ func (s *shelf) compact(onData onShelfDataFn) error {
 // the chance of trimming the end of files upon deletion.
 type sortedUniqueInts []uint64
 
-func (u sortedUniqueInts) Len() int           { return len(u) }
-func (u sortedUniqueInts) Less(i, j int) bool { return u[i] < u[j] }
-func (u sortedUniqueInts) Swap(i, j int)      { u[i], u[j] = u[j], u[i] }
-func (u sortedUniqueInts) Last() uint64       { return u[len(u)-1] }
+func (u sortedUniqueInts) Len() int     { return len(u) }
+func (u sortedUniqueInts) Last() uint64 { return u[len(u)-1] }
 
 func (u *sortedUniqueInts) Append(elem uint64) {
 	s := *u

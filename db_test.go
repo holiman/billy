@@ -6,6 +6,7 @@ package billy
 
 import (
 	"bytes"
+	"errors"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -93,6 +94,43 @@ func TestDBBasics(t *testing.T) {
 		t.Fatal(err)
 	} else if want := fill(3, 140); !bytes.Equal(have, want) {
 		t.Fatalf(" have\n%x\n want\n%x", have, want)
+	}
+}
+
+func TestDbErrors(t *testing.T) {
+	// Create a db
+	p := t.TempDir()
+	db, err := Open(Options{Path: p}, SlotSizePowerOfTwo(128, 500), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = db.Put(fill(0, 140))
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Iterate(nil); !errors.Is(err, ErrClosed) {
+		t.Fatalf("want %v,  have %v", ErrClosed, err)
+	}
+	// Open readonly
+	db, err = Open(Options{
+		Path:     p,
+		Readonly: true,
+	}, SlotSizePowerOfTwo(128, 500), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Put([]byte{}); !errors.Is(err, ErrReadonly) {
+		t.Fatalf("want %v,  have %v", ErrReadonly, err)
+	}
+	// Open regular again
+	db, err = Open(Options{Path: p}, SlotSizePowerOfTwo(128, 500), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// We reach in and close one of the files to trigger an error on Close
+	_ = db.(*database).shelves[0].f.Close()
+	if err := db.Close(); err == nil {
+		t.Fatal("expected error due to double-close")
 	}
 }
 
