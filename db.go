@@ -56,9 +56,6 @@ type SlotSizeFn func() (size uint32, done bool)
 // SlotSizePowerOfTwo is a SlotSizeFn which arranges the slots in shelves which
 // double in size for each level.
 func SlotSizePowerOfTwo(min, max uint32) SlotSizeFn {
-	if min >= max { // programming error
-		panic(fmt.Sprintf("Bad options, min (%d) >= max (%d)", min, max))
-	}
 	v := min
 	return func() (uint32, bool) {
 		ret := v
@@ -110,12 +107,12 @@ func Open(opts Options, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error
 			return nil, fmt.Errorf("slot sizes must be in increasing order")
 		}
 		prevSlotSize = slotSize
-		shelfet, err := openShelf(opts.Path, slotSize, wrapShelfDataFn(len(db.shelves), onData), opts.Readonly)
+		shelf, err := openShelf(opts.Path, slotSize, wrapShelfDataFn(len(db.shelves), onData), opts.Readonly)
 		if err != nil {
 			db.Close() // Close shelves
 			return nil, err
 		}
-		db.shelves = append(db.shelves, shelfet)
+		db.shelves = append(db.shelves, shelf)
 
 		if id := len(db.shelves) & 0xfff; id < prevId {
 			return nil, fmt.Errorf("too many shelves (%d)", len(db.shelves))
