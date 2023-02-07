@@ -6,6 +6,7 @@ package billy
 
 import (
 	"bytes"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"testing"
@@ -151,14 +152,27 @@ func TestSizes(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 1; i < 35; i++ {
-		data := make([]byte, i)
-		_, err := db.Put(data)
+		var (
+			want = make([]byte, i)
+			have []byte
+		)
+		rand.Read(want)
+		key, err := db.Put(want)
 		if i >= 27 && err != nil {
 			// It should reject size 27  and onwards
 			continue
 		}
 		if err != nil {
 			t.Errorf("test %d: %v", i, err)
+			continue
+		}
+		have, err = db.Get(key)
+		if err != nil {
+			t.Errorf("test %d: %v", i, err)
+			continue
+		}
+		if !bytes.Equal(have, want) {
+			t.Errorf("test %d\nhave: %x\nwant: %x\n", i, have, want)
 		}
 	}
 }
