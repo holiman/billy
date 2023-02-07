@@ -270,6 +270,9 @@ func TestErrOnClose(t *testing.T) {
 	if _, err := a.Put(make([]byte, 3)); !errors.Is(err, ErrClosed) {
 		t.Fatalf("expected error for Put on closed shelf, got %v", err)
 	}
+	if err := a.Iterate(nil); !errors.Is(err, ErrClosed) {
+		t.Fatalf("expected error for Iterate on closed shelf, got %v", err)
+	}
 	if _, err := a.Get(0); !errors.Is(err, ErrBadIndex) {
 		t.Fatalf("expected error for Get on closed shelf, got %v", err)
 	}
@@ -505,6 +508,9 @@ func TestShelfRO(t *testing.T) {
 		t.Fatal("Expected error")
 	}
 	if err := a.Delete(0); !errors.Is(err, ErrReadonly) {
+		t.Fatal("Expected error")
+	}
+	if err := a.Update(nil, 0); !errors.Is(err, ErrReadonly) {
 		t.Fatal("Expected error")
 	}
 
