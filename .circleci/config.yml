@@ -37,6 +37,10 @@ jobs:
           arch: "amd64"
       - test:
           arch: "386"
+      - run:
+          name: "Codecov upload"
+          command: bash <(curl -s https://codecov.io/bash)
+
   go118:
     docker:
       - image: cimg/go:1.18
