@@ -172,6 +172,10 @@ func (s *shelf) Put(data []byte) (uint64, error) {
 // Delete marks the data at the given slot of deletion.
 // Delete does not touch the disk. When the shelf is Close():d, any remaining
 // gaps will be marked as such in the backing file.
+// NOTE: If a Get-operation is performed _after_ Delete, then the results
+// are undefined. It may return the original value or a new value, if a new
+// value has been written into the slot.
+// It will _not_ return any kind of "MissingItem" error in this scenario.
 func (s *shelf) Delete(slot uint64) error {
 	if s.readonly {
 		return ErrReadonly
