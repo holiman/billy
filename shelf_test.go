@@ -38,7 +38,33 @@ func checkBlob(fill byte, blob []byte, size int) error {
 func TestBasics(t *testing.T) {
 	b, cleanup := setup(t)
 	defer cleanup()
+
+	// Should reject empty data
+	if _, err := b.Put([]byte{}); !errors.Is(err, ErrEmptyData) {
+		t.Fatal("expected error")
+	}
+	if _, err := b.Put(nil); !errors.Is(err, ErrEmptyData) {
+		t.Fatal("expected error")
+	}
+	// max size 200, check oversized data
+	if _, err := b.Put(make([]byte, 201)); !errors.Is(err, ErrOversized) {
+		t.Fatal("expected error")
+	}
+
 	aa, _ := b.Put(getBlob(0x0a, 150))
+
+	// Should reject empty data
+	if err := b.Update([]byte{}, aa); !errors.Is(err, ErrEmptyData) {
+		t.Fatal("expected error")
+	}
+	if err := b.Update(nil, aa); !errors.Is(err, ErrEmptyData) {
+		t.Fatal("expected error")
+	}
+	// max size 200, check oversized data
+	if err := b.Update(make([]byte, 201), aa); !errors.Is(err, ErrOversized) {
+		t.Fatal("expected error")
+	}
+
 	bb, _ := b.Put(getBlob(0x0b, 151))
 	cc, _ := b.Put(getBlob(0x0c, 152))
 	dd, err := b.Put(getBlob(0x0d, 153))
@@ -461,6 +487,9 @@ func TestShelfRO(t *testing.T) {
 	if _, err := a.Put(make([]byte, 10)); !errors.Is(err, ErrReadonly) {
 		t.Fatal("Expected error")
 	}
+	if err := a.Delete(0); !errors.Is(err, ErrReadonly) {
+		t.Fatal("Expected error")
+	}
 
 	if err = a.Close(); err != nil {
 		t.Fatal(err)
@@ -485,6 +514,28 @@ func TestShelfRO(t *testing.T) {
 	}
 }
 
-// TODO tests
-// - Test Put / Delete in parallel
-// - Test that simultaneous filewrites to different parts of the file don't cause problems
+func TestDelete(t *testing.T) {
+
+	p := t.TempDir()
+
+	a, err := openShelf(p, 20, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Write 100 items
+	for i := 0; i < 100; i++ {
+		_, _ = a.Put(make([]byte, 15)) // id 1, size 6
+	}
+	finfo, _ := a.f.Stat()
+	if have, want := finfo.Size(), 2000; int(have) != want {
+		t.Fatalf("want size %d, have %d", want, have)
+	}
+	// Delete half of them, last item first
+	for i := 99; i >= 50; i-- {
+		_ = a.Delete(uint64(i))
+	}
+	finfo, _ = a.f.Stat()
+	if have, want := finfo.Size(), 1000; int(have) != want {
+		t.Fatalf("want size %d, have %d", want, have)
+	}
+}

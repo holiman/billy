@@ -140,6 +140,48 @@ func TestCustomSlotSizesOk(t *testing.T) {
 	}
 }
 
+func TestSlotSizeLinear(t *testing.T) {
+	linearFn := SlotSizeLinear(10, 100)
+	for want := 10; want < 1000; want += 10 {
+		have, last := linearFn()
+		if int(have) != want {
+			t.Fatalf("have %d want %d", have, want)
+		}
+		if last {
+			t.Fatalf("ended too soon, val %d", have)
+		}
+	}
+	have, last := linearFn()
+	want := 1000
+	if int(have) != want {
+		t.Fatalf("have %d want %d", have, want)
+	}
+	if !last {
+		t.Fatalf("ended too late")
+	}
+}
+
+func TestSlotSizePowerOfTwo(t *testing.T) {
+	linearFn := SlotSizePowerOfTwo(2, 100)
+	for want := 2; want < 100; want *= 2 {
+		have, last := linearFn()
+		if int(have) != want {
+			t.Fatalf("have %d want %d", have, want)
+		}
+		if last {
+			t.Fatalf("ended too soon, val %d", have)
+		}
+	}
+	have, last := linearFn()
+	want := 128
+	if int(have) != want {
+		t.Fatalf("have %d want %d", have, want)
+	}
+	if !last {
+		t.Fatalf("ended too late")
+	}
+}
+
 func TestSizes(t *testing.T) {
 	a := 0
 	db, err := Open(Options{Path: t.TempDir()}, func() (uint32, bool) {
@@ -151,6 +193,14 @@ func TestSizes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	min, max := db.Limits()
+	if min != 10 {
+		t.Fatalf("exp 10, have %d", min)
+	}
+	if max != 30 {
+		t.Fatalf("exp 30, have %d", max)
+	}
+	var kvdata = make(map[uint64]string)
 	for i := 1; i < 35; i++ {
 		var (
 			want = make([]byte, i)
@@ -174,5 +224,25 @@ func TestSizes(t *testing.T) {
 		if !bytes.Equal(have, want) {
 			t.Errorf("test %d\nhave: %x\nwant: %x\n", i, have, want)
 		}
+		kvdata[key] = string(have)
 	}
+	db.Iterate(func(key uint64, data []byte) {
+		want := kvdata[key]
+		have := string(data)
+		if have != want {
+			t.Fatalf("iteration fail, key %d\nhave: %x\nwant: %x\n",
+				key, have, want)
+		}
+	})
+	for key := range kvdata {
+		err = db.Delete(key)
+		if err != nil {
+			t.Errorf("delete key %d: %v", key, err)
+			continue
+		}
+	}
+	// Expect nothing to remaing
+	db.Iterate(func(key uint64, data []byte) {
+		t.Fatalf("Expected empty db, key %d", key)
+	})
 }

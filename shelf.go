@@ -172,6 +172,10 @@ func (s *shelf) Put(data []byte) (uint64, error) {
 // Delete marks the data at the given slot of deletion.
 // Delete does not touch the disk. When the shelf is Close():d, any remaining
 // gaps will be marked as such in the backing file.
+// NOTE: If a Get-operation is performed _after_ Delete, then the results
+// are undefined. It may return the original value or a new value, if a new
+// value has been written into the slot.
+// It will _not_ return any kind of "MissingItem" error in this scenario.
 func (s *shelf) Delete(slot uint64) error {
 	if s.readonly {
 		return ErrReadonly
@@ -186,7 +190,10 @@ func (s *shelf) Delete(slot uint64) error {
 	// We try to keep writes going to the early parts of the file, to have the
 	// possibility of trimming the file when/if the tail becomes unused.
 	s.gaps.Append(slot)
-	if s.tail == s.gaps.Last() {
+
+	// s.tail is the first empty location. If the gaps has reached to one below
+	// the tail, then we can start truncating
+	if s.tail == s.gaps.Last()+1 {
 		// we can delete a portion of the file
 		s.fileMu.Lock()
 		defer s.fileMu.Unlock()
@@ -195,7 +202,7 @@ func (s *shelf) Delete(slot uint64) error {
 			s.gaps = s.gaps[:0]
 			return ErrClosed
 		}
-		for len(s.gaps) > 0 && s.tail == s.gaps.Last() {
+		for len(s.gaps) > 0 && s.tail == s.gaps.Last()+1 {
 			s.gaps = s.gaps[:len(s.gaps)-1]
 			s.tail--
 		}

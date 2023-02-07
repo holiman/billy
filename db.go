@@ -10,6 +10,7 @@ import (
 	"sort"
 )
 
+// Database represents a `billy` storage.
 type Database interface {
 	io.Closer
 
@@ -29,7 +30,16 @@ type Database interface {
 
 	// Limits returns the smallest and largest slot size.
 	Limits() (uint32, uint32)
+
+	// Iterate iterates through all the data in the database, and invokes the
+	// given onData method for every element
+	Iterate(onData OnDataFn)
 }
+
+// OnDataFn is used to iterate the entire dataset in the database.
+// After the method returns, the content of 'data' will be modified by
+// the iterator, so it needs to be copied if it is to be used later.
+type OnDataFn func(key uint64, data []byte)
 
 // SlotSizeFn is a method that acts as a "generator": a closure which, at each
 // invocation, should spit out the next slot-size. In order to create a database with three
@@ -60,10 +70,10 @@ func SlotSizePowerOfTwo(min, max uint32) SlotSizeFn {
 // SlotSizeLinear is a SlotSizeFn which arranges the slots in shelves which
 // increase linearly.
 func SlotSizeLinear(size, count int) SlotSizeFn {
-	i := 1
+	i := 0
 	return func() (uint32, bool) {
-		ret := size * i
 		i++
+		ret := size * i
 		return uint32(ret), i >= count
 	}
 }
@@ -149,11 +159,6 @@ func (db *database) Delete(key uint64) error {
 	id := int(key>>28) & 0xfff
 	return db.shelves[id].Delete(key & 0x00FFFFFF)
 }
-
-// OnDataFn is used to iterate the entire dataset in the database.
-// After the method returns, the content of 'data' will be modified by
-// the iterator, so it needs to be copied if it is to be used later.
-type OnDataFn func(key uint64, data []byte)
 
 func wrapShelfDataFn(shelfId int, onData OnDataFn) onShelfDataFn {
 	if onData == nil {
