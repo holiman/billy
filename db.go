@@ -33,7 +33,7 @@ type Database interface {
 
 	// Iterate iterates through all the data in the database, and invokes the
 	// given onData method for every element
-	Iterate(onData OnDataFn)
+	Iterate(onData OnDataFn) error
 }
 
 // OnDataFn is used to iterate the entire dataset in the database.
@@ -172,10 +172,14 @@ func wrapShelfDataFn(shelfId int, onData OnDataFn) onShelfDataFn {
 
 // Iterate iterates through all the data in the database, and invokes the
 // given onData method for every element
-func (db *database) Iterate(onData OnDataFn) {
-	for i, b := range db.shelves {
-		b.Iterate(wrapShelfDataFn(i, onData))
+func (db *database) Iterate(onData OnDataFn) error {
+	var err error
+	for i, shelf := range db.shelves {
+		if e := shelf.Iterate(wrapShelfDataFn(i, onData)); e != nil {
+			err = fmt.Errorf("shelf %d: %w", i, e)
+		}
 	}
+	return err
 }
 
 func (db *database) Limits() (uint32, uint32) {

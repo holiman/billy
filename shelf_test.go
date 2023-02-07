@@ -36,6 +36,15 @@ func checkBlob(fill byte, blob []byte, size int) error {
 }
 
 func TestBasics(t *testing.T) {
+	// can't open non-existing directory
+	if _, err := openShelf("/baz/bonk/foobar/gazonk", 10, nil, false); err == nil {
+		t.Fatal("expected error")
+	}
+	// Can't point path to a file
+	if _, err := openShelf("./README.md", 10, nil, false); err == nil {
+		t.Fatal("expected error")
+	}
+
 	b, cleanup := setup(t)
 	defer cleanup()
 
@@ -537,5 +546,22 @@ func TestDelete(t *testing.T) {
 	finfo, _ = a.f.Stat()
 	if have, want := finfo.Size(), 1000; int(have) != want {
 		t.Fatalf("want size %d, have %d", want, have)
+	}
+	// Delete every second remaining item
+	for i := 50; i >= 0; i -= 2 {
+		_ = a.Delete(uint64(i))
+	}
+	finfo, _ = a.f.Stat()
+	if have, want := finfo.Size(), 1000; int(have) != want {
+		t.Fatalf("want size %d, have %d", want, have)
+	}
+	var have string
+	want := "1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39,41,43,45,47,49,"
+	a.Iterate(func(slot uint64, data []byte) {
+		have = have + fmt.Sprintf("%d,", slot)
+		//		fmt.Printf("slot %d exists\n", slot)
+	})
+	if have != want {
+		t.Fatalf("have: %v\nwant: %v\n", have, want)
 	}
 }
