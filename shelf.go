@@ -190,7 +190,10 @@ func (s *shelf) Delete(slot uint64) error {
 	// We try to keep writes going to the early parts of the file, to have the
 	// possibility of trimming the file when/if the tail becomes unused.
 	s.gaps.Append(slot)
-	if s.tail == s.gaps.Last() {
+
+	// s.tail is the first empty location. If the gaps has reached to one below
+	// the tail, then we can start truncating
+	if s.tail == s.gaps.Last()+1 {
 		// we can delete a portion of the file
 		s.fileMu.Lock()
 		defer s.fileMu.Unlock()
@@ -199,7 +202,7 @@ func (s *shelf) Delete(slot uint64) error {
 			s.gaps = s.gaps[:0]
 			return ErrClosed
 		}
-		for len(s.gaps) > 0 && s.tail == s.gaps.Last() {
+		for len(s.gaps) > 0 && s.tail == s.gaps.Last()+1 {
 			s.gaps = s.gaps[:len(s.gaps)-1]
 			s.tail--
 		}
