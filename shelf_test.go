@@ -102,20 +102,23 @@ func TestBasics(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Same checks, but during iteration
-	b.Iterate(func(slot uint64, data []byte) {
+	if err = b.Iterate(func(slot uint64, data []byte) {
 		if have, want := byte(slot)+0x0a, data[0]; have != want {
 			t.Fatalf("wrong content: have %x want %x", have, want)
 		}
 		if have, want := len(data), int(150+slot); have != want {
 			t.Fatalf("wrong size: have %x want %x", have, want)
 		}
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
+
 	// Delete item and place a new one there
 	if err := b.Delete(bb); err != nil {
 		t.Fatal(err)
 	}
 	// Iteration should skip over deleted items
-	b.Iterate(func(slot uint64, data []byte) {
+	if err = b.Iterate(func(slot uint64, data []byte) {
 		if have, want := byte(slot)+0x0a, data[0]; have != want {
 			t.Fatalf("wrong content: have %x want %x", have, want)
 		}
@@ -125,7 +128,10 @@ func TestBasics(t *testing.T) {
 		if slot == bb {
 			t.Fatalf("Expected not to iterate %d", bb)
 		}
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
+
 	ee, _ := b.Put(getBlob(0x0e, 154))
 	if err := checkBlob(0x0e, get(ee), 154); err != nil {
 		t.Fatal(err)
@@ -150,9 +156,11 @@ func TestBasics(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Iteration should be a no-op
-	b.Iterate(func(slot uint64, data []byte) {
+	if err := b.Iterate(func(slot uint64, data []byte) {
 		t.Fatalf("Expected no iteration")
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func writeShelfFile(name string, size int, slotData []byte) error {
@@ -557,10 +565,13 @@ func TestDelete(t *testing.T) {
 	}
 	var have string
 	want := "1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39,41,43,45,47,49,"
-	a.Iterate(func(slot uint64, data []byte) {
+	err = a.Iterate(func(slot uint64, data []byte) {
 		have = have + fmt.Sprintf("%d,", slot)
 		//		fmt.Printf("slot %d exists\n", slot)
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if have != want {
 		t.Fatalf("have: %v\nwant: %v\n", have, want)
 	}
