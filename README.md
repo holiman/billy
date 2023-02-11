@@ -1,7 +1,9 @@
 # Billy
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/holiman/billy.svg)](https://pkg.go.dev/github.com/holiman/billy)
 [![CircleCI](https://dl.circleci.com/status-badge/img/gh/holiman/billy/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/holiman/billy/tree/main)
 [![codecov](https://codecov.io/gh/holiman/billy/branch/main/graph/badge.svg?token=89O562HG9H)](https://codecov.io/gh/holiman/billy)
+[![DeepSource](https://deepsource.io/gh/holiman/billy.svg/?label=active+issues&show_trend=true&token=C94_rdS2TGS6WZcS66tnkSXE)](https://deepsource.io/gh/holiman/billy/?ref=repository-badge)
 
 Billy (previously BagDB) is a super simple datastore. It can't _quite_ be called a database, because it avoids implementing some of the most complex parts of an actual database. 
 It's intended to be used in very particular circumstances. 

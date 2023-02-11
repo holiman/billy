@@ -112,11 +112,7 @@ func TestDbErrors(t *testing.T) {
 		t.Fatalf("want %v,  have %v", ErrClosed, err)
 	}
 	// Open readonly
-	db, err = Open(Options{
-		Path:     p,
-		Readonly: true,
-	}, SlotSizePowerOfTwo(128, 500), nil)
-	if err != nil {
+	if db, err = Open(Options{Path: p, Readonly: true}, SlotSizePowerOfTwo(128, 500), nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Put([]byte{}); !errors.Is(err, ErrReadonly) {
