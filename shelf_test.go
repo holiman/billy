@@ -174,11 +174,13 @@ func writeShelfFile(name string, slotSize int, slotData []byte) error {
 	if err != nil {
 		return err
 	}
-	binary.Write(f, binary.BigEndian, &shelfHeader{
+	if err := binary.Write(f, binary.BigEndian, &shelfHeader{
 		Magic:    Magic,
 		Version:  curVersion,
 		Slotsize: uint32(slotSize),
-	})
+	}); err != nil {
+		return err
+	}
 
 	// Fill all the items
 	for i, byt := range slotData {
@@ -400,8 +402,8 @@ func TestGapHeap(t *testing.T) {
 	}
 	gaps := make(sortedUniqueInts, 0)
 	fill(&gaps)
-	for i := uint64(10); gaps.Len() > 0; i-- {
-		if have, want := gaps.Last(), i; have != want {
+	for i := uint64(10); len(gaps) > 0; i-- {
+		if have, want := gaps[len(gaps)-1], i; have != want {
 			t.Fatalf("have %d want %d", have, want)
 		}
 		gaps = gaps[:len(gaps)-1]
@@ -410,8 +412,8 @@ func TestGapHeap(t *testing.T) {
 	fill(&gaps)
 	fill(&gaps)
 	fill(&gaps)
-	for i := uint64(10); gaps.Len() > 0; i-- {
-		if have, want := gaps.Last(), i; have != want {
+	for i := uint64(10); len(gaps) > 0; i-- {
+		if have, want := gaps[len(gaps)-1], i; have != want {
 			t.Fatalf("have %d want %d", have, want)
 		}
 		gaps = gaps[:len(gaps)-1]
@@ -623,7 +625,9 @@ func TestVersion(t *testing.T) {
 			want: "unexpected EOF",
 		},
 	} {
-		os.WriteFile(filepath.Join(p, fname), tc.hdr, 0o777)
+		if err := os.WriteFile(filepath.Join(p, fname), tc.hdr, 0o777); err != nil {
+			t.Fatal(err)
+		}
 		_, err := openShelf(p, size, nil, false)
 		if err == nil {
 			t.Fatal("expected error")

@@ -222,7 +222,7 @@ func del(ctx *cli.Context) error {
 
 func startIpc(endpoint string) (net.Listener, error) {
 	// Ensure the IPC path exists and remove any previous leftover
-	if err := os.MkdirAll(filepath.Dir(endpoint), 0751); err != nil {
+	if err := os.MkdirAll(filepath.Dir(endpoint), 0750); err != nil {
 		return nil, err
 	}
 	os.Remove(endpoint)

@@ -229,9 +229,9 @@ func (s *shelf) Delete(slot uint64) error {
 	// possibility of trimming the file when/if the tail becomes unused.
 	s.gaps.Append(slot)
 
-	// s.tail is the first empty location. If the gaps has reached to one below
+	// s.count is the first empty location. If the gaps has reached to one below
 	// the tail, then we can start truncating
-	if s.count == s.gaps.Last()+1 {
+	if lastGap := s.gaps[len(s.gaps)-1]; lastGap+1 == s.count {
 		// we can delete a portion of the file
 		s.fileMu.Lock()
 		defer s.fileMu.Unlock()
@@ -239,7 +239,7 @@ func (s *shelf) Delete(slot uint64) error {
 			s.gaps = s.gaps[:0]
 			return ErrClosed
 		}
-		for len(s.gaps) > 0 && s.count == s.gaps.Last()+1 {
+		for len(s.gaps) > 0 && s.gaps[len(s.gaps)-1]+1 == s.count {
 			s.gaps = s.gaps[:len(s.gaps)-1]
 			s.count--
 		}
@@ -320,7 +320,7 @@ func (s *shelf) getSlot() uint64 {
 	// Locate the first free slot
 	s.gapsMu.Lock()
 	defer s.gapsMu.Unlock()
-	if nGaps := s.gaps.Len(); nGaps > 0 {
+	if nGaps := len(s.gaps); nGaps > 0 {
 		slot = s.gaps[0]
 		s.gaps = s.gaps[1:]
 		return slot
@@ -486,9 +486,6 @@ func (s *shelf) compact(onData onShelfDataFn) error {
 // of gaps. We keep them ordered to make writes prefer early slots, to increase
 // the chance of trimming the end of files upon deletion.
 type sortedUniqueInts []uint64
-
-func (u sortedUniqueInts) Len() int     { return len(u) }
-func (u sortedUniqueInts) Last() uint64 { return u[len(u)-1] }
 
 func (u *sortedUniqueInts) Append(elem uint64) {
 	s := *u
