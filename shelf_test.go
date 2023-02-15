@@ -290,7 +290,7 @@ func TestErrOnClose(t *testing.T) {
 	if err := a.Iterate(nil); !errors.Is(err, ErrClosed) {
 		t.Fatalf("expected error for Iterate on closed shelf, got %v", err)
 	}
-	if _, err := a.Get(0); !errors.Is(err, ErrBadIndex) {
+	if _, err := a.Get(0); !errors.Is(err, ErrClosed) {
 		t.Fatalf("expected error for Get on closed shelf, got %v", err)
 	}
 	// Only expectation here is not to panic, basically

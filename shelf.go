@@ -40,9 +40,8 @@ type shelf struct {
 	// gaps is a slice of indices to slots that are free to use. The
 	// gaps are always sorted lowest numbers first.
 	gaps   sortedUniqueInts
-	gapsMu sync.Mutex // Mutex for operating on 'gaps' and 'tail'.
-
-	count uint64 // count holds the number of items on the shelf.
+	gapsMu sync.Mutex // Mutex for operating on 'gaps' and 'count'.
+	count  uint64     // count holds the number of items on the shelf.
 
 	f      *os.File     // f is the file where data is persisted.
 	fileMu sync.RWMutex // Mutex for file operations on 'f' (rw versus Close) and closed.
@@ -176,14 +175,13 @@ func (s *shelf) Update(data []byte, slot uint64) error {
 	if s.readonly {
 		return ErrReadonly
 	}
-	// Validations
 	if len(data) == 0 {
 		return ErrEmptyData
 	}
 	if have, max := uint32(len(data)+itemHeaderSize), s.slotSize; have > max {
 		return ErrOversized
 	}
-	return s.persist(data, slot)
+	return s.update(data, slot)
 }
 
 // Put writes the given data and returns a slot identifier. The caller may
@@ -192,19 +190,28 @@ func (s *shelf) Put(data []byte) (uint64, error) {
 	if s.readonly {
 		return 0, ErrReadonly
 	}
-	// Validations
 	if len(data) == 0 {
 		return 0, ErrEmptyData
 	}
 	if have, max := uint32(len(data)+itemHeaderSize), s.slotSize; have > max {
 		return 0, ErrOversized
 	}
-	// Find a free slot
 	slot := s.getSlot()
-	if err := s.persist(data, slot); err != nil {
-		return 0, err
+	return slot, s.update(data, slot)
+}
+
+// update writes the data to the given slot.
+func (s *shelf) update(data []byte, slot uint64) error {
+	// Read-lock to prevent file from being closed while writing to it
+	s.fileMu.RLock()
+	defer s.fileMu.RUnlock()
+	if s.closed {
+		return ErrClosed
 	}
-	return slot, nil
+	buf := make([]byte, s.slotSize)
+	binary.BigEndian.PutUint32(buf, uint32(len(data))) // Write header
+	copy(buf[itemHeaderSize:], data)                   // Write data
+	return s.writeSlot(buf, slot)
 }
 
 // Delete marks the data at the given slot of deletion.
@@ -254,22 +261,17 @@ func (s *shelf) Delete(slot uint64) error {
 // this method is undefined: it may return the original data, or some newer data
 // which has been written into the slot after Delete was called.
 func (s *shelf) Get(slot uint64) ([]byte, error) {
-	data, err := s.readFile(slot)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadIndex, err)
-	}
-	return data, nil
-}
-
-func (s *shelf) readFile(slot uint64) ([]byte, error) {
-	// We're read-locking this to prevent the file from being closed while we're
-	// reading from it
+	// Read-lock to prevent file from being closed while reading from it
 	s.fileMu.RLock()
 	defer s.fileMu.RUnlock()
 	if s.closed {
 		return nil, ErrClosed
 	}
-	return s.readSlot(make([]byte, s.slotSize), slot)
+	data, err := s.readSlot(make([]byte, s.slotSize), slot)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrBadIndex, err)
+	}
+	return data, nil
 }
 
 // readSlot is a convenience function to the data from a slot.
@@ -295,24 +297,6 @@ func (s *shelf) readSlot(buf []byte, slot uint64) ([]byte, error) {
 func (s *shelf) writeSlot(data []byte, slot uint64) error {
 	_, err := s.f.WriteAt(data, int64(ShelfHeaderSize)+int64(slot)*int64(s.slotSize))
 	return err
-}
-
-// persist acquires the file rlock, constructs the slot header and writes the
-// data to file.
-func (s *shelf) persist(data []byte, slot uint64) error {
-	// We're read-locking this to prevent the file from being closed while we're
-	// writing to it
-	s.fileMu.RLock()
-	defer s.fileMu.RUnlock()
-	if s.closed {
-		return ErrClosed
-	}
-	buf := make([]byte, s.slotSize)
-	// Write header
-	binary.BigEndian.PutUint32(buf, uint32(len(data)))
-	// Write data
-	copy(buf[itemHeaderSize:], data)
-	return s.writeSlot(buf, slot)
 }
 
 func (s *shelf) getSlot() uint64 {
