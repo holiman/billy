@@ -108,7 +108,7 @@ func doFuzz(ctx *cli.Context) error {
 			// Randomize size of data
 			l := int(min) + rand.Intn(int(max-min))
 			data := make([]byte, l)
-			crand.Read(data)
+			_, _ = crand.Read(data)
 			hasher.Reset()
 			sum := hex.EncodeToString(hasher.Sum(data))
 			key, err := db.Put(data)
