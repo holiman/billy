@@ -6,8 +6,8 @@ package billy
 
 import (
 	"bytes"
+	"crypto/rand"
 	"errors"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"testing"

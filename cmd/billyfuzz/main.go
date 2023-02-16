@@ -1,6 +1,7 @@
 package main
 
 import (
+	crand "crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -107,7 +108,7 @@ func doFuzz(ctx *cli.Context) error {
 			// Randomize size of data
 			l := int(min) + rand.Intn(int(max-min))
 			data := make([]byte, l)
-			rand.Read(data)
+			crand.Read(data)
 			hasher.Reset()
 			sum := hex.EncodeToString(hasher.Sum(data))
 			key, err := db.Put(data)
