@@ -240,7 +240,7 @@ func TestSizes(t *testing.T) {
 			want = make([]byte, i)
 			have []byte
 		)
-		rand.Read(want)
+		_, _ = rand.Read(want)
 		key, err := db.Put(want)
 		if i >= 27 && err != nil {
 			// It should reject size 27  and onwards

@@ -18,14 +18,14 @@ commands:
             go test -v -coverprofile=coverage-<<parameters.arch>>.txt -covermode=count ./...
 
 jobs:
-  go119:
+  go120:
     docker:
-      - image: cimg/go:1.19
+      - image: cimg/go:1.20
     steps:
       - run:
           name: "Install tools"
           command: |
-            curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.50.1
+            curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.51.1
       - checkout
       - run:
           name: "Lint"
@@ -41,9 +41,9 @@ jobs:
           name: "Codecov upload"
           command: bash <(curl -s https://codecov.io/bash)
 
-  go118:
+  go119:
     docker:
-      - image: cimg/go:1.18
+      - image: cimg/go:1.19
     steps:
       - checkout
       - test
@@ -52,5 +52,5 @@ workflows:
   version: 2
   billy:
     jobs:
+      - go120
       - go119
-      - go118
