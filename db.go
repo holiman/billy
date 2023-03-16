@@ -28,7 +28,7 @@ type Database interface {
 	// data, or fail with an error.
 	Delete(key uint64) error
 
-	// Size returns the storage size of the value belonging to the iven key.
+	// Size returns the storage size of the value belonging to the given key.
 	Size(key uint64) uint32
 
 	// Limits returns the smallest and largest slot size.
