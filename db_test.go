@@ -72,28 +72,40 @@ func TestDBBasics(t *testing.T) {
 	}
 	k0, _ := db.Put(fill(0, 140))
 	k1, _ := db.Put(fill(1, 140))
-	k2, _ := db.Put(fill(2, 140))
-	k3, _ := db.Put(fill(3, 140))
+	k2, _ := db.Put(fill(2, 280))
+	k3, _ := db.Put(fill(3, 280))
 
 	if have, err := db.Get(k0); err != nil {
 		t.Fatal(err)
 	} else if want := fill(0, 140); !bytes.Equal(have, want) {
 		t.Fatalf(" have\n%x\n want\n%x", have, want)
 	}
+	if have := db.Size(k0); have != 256 {
+		t.Fatalf(" have\n%d\n want\n%d", have, 256)
+	}
 	if have, err := db.Get(k1); err != nil {
 		t.Fatal(err)
 	} else if want := fill(1, 140); !bytes.Equal(have, want) {
 		t.Fatalf(" have\n%x\n want\n%x", have, want)
 	}
+	if have := db.Size(k1); have != 256 {
+		t.Fatalf(" have\n%d\n want\n%d", have, 256)
+	}
 	if have, err := db.Get(k2); err != nil {
 		t.Fatal(err)
-	} else if want := fill(2, 140); !bytes.Equal(have, want) {
+	} else if want := fill(2, 280); !bytes.Equal(have, want) {
 		t.Fatalf(" have\n%x\n want\n%x", have, want)
+	}
+	if have := db.Size(k2); have != 512 {
+		t.Fatalf(" have\n%d\n want\n%d", have, 512)
 	}
 	if have, err := db.Get(k3); err != nil {
 		t.Fatal(err)
-	} else if want := fill(3, 140); !bytes.Equal(have, want) {
+	} else if want := fill(3, 280); !bytes.Equal(have, want) {
 		t.Fatalf(" have\n%x\n want\n%x", have, want)
+	}
+	if have := db.Size(k3); have != 512 {
+		t.Fatalf(" have\n%d\n want\n%d", have, 512)
 	}
 }
 
