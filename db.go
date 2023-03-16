@@ -85,14 +85,14 @@ type Options struct {
 	Snappy   bool // unused for now
 }
 
-// OpenCustom opens a (new or eixsting) database, with configurable limits. The
-// given slotSizeFn will be used to determine both the shelf sizes and the number
-// of shelves.
-// The function must yield values in increasing order.
+// Open opens a (new or existing) database, with configurable limits. The given
+// slotSizeFn will be used to determine both the shelf sizes and the number of
+// shelves. The function must yield values in increasing order.
+//
 // If shelf already exists, they are opened and read, in order to populate the
-// internal gap-list.
-// While doing so, it's a good opportunity for the caller to read the data out,
-// (which is probably desirable), which can be done using the optional onData callback.
+// internal gap-list. While doing so, it's a good opportunity for the caller to
+// read the data out, (which is probably desirable), which can be done using the
+// optional onData callback.
 func Open(opts Options, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error) {
 	var (
 		db           = &database{}
@@ -154,7 +154,7 @@ func (db *database) Get(key uint64) ([]byte, error) {
 // data, or fail with an error.
 func (db *database) Delete(key uint64) error {
 	id := int(key>>28) & 0xfff
-	return db.shelves[id].Delete(key & 0x00FFFFFF)
+	return db.shelves[id].Delete(key & 0x0FFFFFFF)
 }
 
 func wrapShelfDataFn(shelfId int, onData OnDataFn) onShelfDataFn {
