@@ -28,6 +28,9 @@ type Database interface {
 	// data, or fail with an error.
 	Delete(key uint64) error
 
+	// Size returns the storage size of the value belonging to the iven key.
+	Size(key uint64) uint32
+
 	// Limits returns the smallest and largest slot size.
 	Limits() (uint32, uint32)
 
@@ -143,6 +146,9 @@ func (db *database) Put(data []byte) (uint64, error) {
 }
 
 // Get retrieves the data stored at the given key.
+//
+// The key is assumed to be one returned by Put or Iterate (potentially on Open).
+// Attempting to access a different key is undefined behavior and may panic.
 func (db *database) Get(key uint64) ([]byte, error) {
 	id := int(key>>28) & 0xfff
 	return db.shelves[id].Get(key & 0x0FFFFFFF)
@@ -152,9 +158,22 @@ func (db *database) Get(key uint64) ([]byte, error) {
 // overwritten by other data. After calling Delete with a given key, the results
 // from doing Get(key) is undefined -- it may return the same data, or some other
 // data, or fail with an error.
+//
+// The key is assumed to be one returned by Put or Iterate (potentially on Open).
+// Attempting to access a different key is undefined behavior and may panic.
 func (db *database) Delete(key uint64) error {
 	id := int(key>>28) & 0xfff
 	return db.shelves[id].Delete(key & 0x00FFFFFF)
+}
+
+// Size returns the storage size (padding included) of a database entry belonging
+// to a key.
+//
+// The key is assumed to be one returned by Put or Iterate (potentially on Open).
+// Attempting to access a different key is undefined behavior and may panic.
+func (db *database) Size(key uint64) uint32 {
+	id := int(key>>28) & 0xfff
+	return db.shelves[id].slotSize
 }
 
 func wrapShelfDataFn(shelfId int, onData OnDataFn) onShelfDataFn {
