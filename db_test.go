@@ -272,12 +272,12 @@ func TestSizes(t *testing.T) {
 		}
 		kvdata[key] = string(have)
 	}
-	err = db.Iterate(func(key uint64, data []byte) {
-		want := kvdata[key]
-		have := string(data)
-		if have != want {
-			t.Fatalf("iteration fail, key %d\nhave: %x\nwant: %x\n",
-				key, have, want)
+	err = db.Iterate(func(key uint64, size uint32, data []byte) {
+		wantVal := kvdata[key]
+		wantSize := uint32(((len(wantVal) + itemHeaderSize + 9) / 10) * 10)
+		if string(data) != wantVal || size != wantSize {
+			t.Fatalf("iteration fail, key %d\nhave data: %x\nwant data: %x\nhave size: %d\nwant size: %d\n",
+				key, data, wantVal, size, wantSize)
 		}
 	})
 	if err != nil {
@@ -291,7 +291,7 @@ func TestSizes(t *testing.T) {
 		}
 	}
 	// Expect nothing to remaing
-	err = db.Iterate(func(key uint64, data []byte) {
+	err = db.Iterate(func(key uint64, size uint32, data []byte) {
 		t.Fatalf("Expected empty db, key %d", key)
 	})
 	if err != nil {

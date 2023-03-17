@@ -323,7 +323,6 @@ type onShelfDataFn func(slot uint64, data []byte)
 // Iterate iterates through the elements on the shelf, and invokes the onData
 // callback for each item.
 func (s *shelf) Iterate(onData onShelfDataFn) error {
-
 	s.gapsMu.Lock()
 	defer s.gapsMu.Unlock()
 
