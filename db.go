@@ -42,7 +42,7 @@ type Database interface {
 // OnDataFn is used to iterate the entire dataset in the database.
 // After the method returns, the content of 'data' will be modified by
 // the iterator, so it needs to be copied if it is to be used later.
-type OnDataFn func(key uint64, data []byte)
+type OnDataFn func(key uint64, size uint32, data []byte)
 
 // SlotSizeFn is a method that acts as a "generator": a closure which, at each
 // invocation, should spit out the next slot-size. In order to create a database with three
@@ -110,7 +110,7 @@ func Open(opts Options, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error
 			return nil, fmt.Errorf("slot sizes must be in increasing order")
 		}
 		prevSlotSize = slotSize
-		shelf, err := openShelf(opts.Path, slotSize, wrapShelfDataFn(len(db.shelves), onData), opts.Readonly)
+		shelf, err := openShelf(opts.Path, slotSize, wrapShelfDataFn(len(db.shelves), slotSize, onData), opts.Readonly)
 		if err != nil {
 			db.Close() // Close shelves
 			return nil, err
@@ -176,13 +176,13 @@ func (db *database) Size(key uint64) uint32 {
 	return db.shelves[id].slotSize
 }
 
-func wrapShelfDataFn(shelfId int, onData OnDataFn) onShelfDataFn {
+func wrapShelfDataFn(shelfId int, shelfSlotSize uint32, onData OnDataFn) onShelfDataFn {
 	if onData == nil {
 		return nil
 	}
 	return func(slot uint64, data []byte) {
 		key := slot | uint64(shelfId)<<28
-		onData(key, data)
+		onData(key, shelfSlotSize, data)
 	}
 }
 
@@ -191,7 +191,7 @@ func wrapShelfDataFn(shelfId int, onData OnDataFn) onShelfDataFn {
 func (db *database) Iterate(onData OnDataFn) error {
 	var err error
 	for i, shelf := range db.shelves {
-		if e := shelf.Iterate(wrapShelfDataFn(i, onData)); e != nil {
+		if e := shelf.Iterate(wrapShelfDataFn(i, shelf.slotSize, onData)); e != nil {
 			err = fmt.Errorf("shelf %d: %w", i, e)
 		}
 	}

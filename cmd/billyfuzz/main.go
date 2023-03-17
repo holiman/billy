@@ -70,7 +70,7 @@ func doFuzz(ctx *cli.Context) error {
 	var (
 		hasher = sha256.New()
 		hashes = make(map[uint64]string)
-		onData = func(key uint64, data []byte) {
+		onData = func(key uint64, size uint32, data []byte) {
 			if verbose {
 				fmt.Printf("init key %x val %x\n", key, data[:20])
 			}
