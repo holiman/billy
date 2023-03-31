@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"sync/atomic"
 )
 
 const (
@@ -48,6 +49,11 @@ type shelf struct {
 
 	closed   bool
 	readonly bool
+
+	// For metrics
+	gapCount  atomic.Uint64 // Counts the number of gaps.
+	itemCount atomic.Uint64 // Counts the number of items (includes gaps).
+
 }
 
 var (
@@ -149,6 +155,8 @@ func (s *shelf) Close() error {
 	if s.readonly {
 		return nil
 	}
+	defer s.gapCount.Store(len(s.gaps))
+	defer s.itemCount.Store(s.count)
 	var err error
 	setErr := func(e error) {
 		if err == nil && e != nil {
@@ -232,6 +240,8 @@ func (s *shelf) Delete(slot uint64) error {
 	if slot >= s.count {
 		return fmt.Errorf("%w: shelf %d, slot %d, tail %d", ErrBadIndex, s.slotSize, slot, s.count)
 	}
+	defer s.gapCount.Store(len(s.gaps))
+	defer s.itemCount.Store(s.count)
 	// We try to keep writes going to the early parts of the file, to have the
 	// possibility of trimming the file when/if the tail becomes unused.
 	s.gaps.Append(slot)
@@ -304,6 +314,8 @@ func (s *shelf) getSlot() uint64 {
 	// Locate the first free slot
 	s.gapsMu.Lock()
 	defer s.gapsMu.Unlock()
+	defer s.gapCount.Store(len(s.gaps))
+	defer s.itemCount.Store(s.count)
 	if nGaps := len(s.gaps); nGaps > 0 {
 		slot = s.gaps[0]
 		s.gaps = s.gaps[1:]
@@ -337,6 +349,8 @@ func (s *shelf) Iterate(onData onShelfDataFn) error {
 		nextGap = uint64(0xffffffffffffffff)
 		gapIdx  = 0
 	)
+	defer s.gapCount.Store(len(s.gaps))
+	defer s.itemCount.Store(s.count)
 	if gapIdx < len(s.gaps) {
 		nextGap = s.gaps[gapIdx]
 	}
@@ -367,7 +381,8 @@ func (s *shelf) compact(onData onShelfDataFn) error {
 	defer s.gapsMu.Unlock()
 	s.fileMu.RLock()
 	defer s.fileMu.RUnlock()
-
+	defer s.gapCount.Store(len(s.gaps))
+	defer s.itemCount.Store(s.count)
 	buf := make([]byte, s.slotSize)
 	// nextGap searches upwards from the given slot (inclusive),
 	// to find the first gap.
