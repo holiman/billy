@@ -20,10 +20,12 @@ type ShelfInfos struct {
 func (db *database) Infos() *Infos {
 	infos := new(Infos)
 	for _, shelf := range db.shelves {
+		slots, gaps := shelf.stats()
+
 		infos.Shelves = append(infos.Shelves, &ShelfInfos{
 			SlotSize:    shelf.slotSize,
-			FilledSlots: shelf.count - uint64(len(shelf.gaps)),
-			GappedSlots: uint64(len(shelf.gaps)),
+			FilledSlots: slots - gaps,
+			GappedSlots: gaps,
 		})
 	}
 	return infos
