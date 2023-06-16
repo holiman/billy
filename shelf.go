@@ -465,6 +465,14 @@ func (s *shelf) compact(onData onShelfDataFn) error {
 	return nil
 }
 
+// stats returns the total number of slots in the shelf and the gaps within.
+func (s *shelf) stats() (uint64, uint64) {
+	s.gapsMu.Lock()
+	defer s.gapsMu.Unlock()
+
+	return s.count, uint64(len(s.gaps))
+}
+
 // sortedUniqueInts is a helper structure to maintain an ordered slice
 // of gaps. We keep them ordered to make writes prefer early slots, to increase
 // the chance of trimming the end of files upon deletion.

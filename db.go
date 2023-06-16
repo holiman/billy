@@ -34,6 +34,9 @@ type Database interface {
 	// Limits returns the smallest and largest slot size.
 	Limits() (uint32, uint32)
 
+	// Infos retrieves various internal statistics about the database.
+	Infos() *Infos
+
 	// Iterate iterates through all the data in the database, and invokes the
 	// given onData method for every element
 	Iterate(onData OnDataFn) error
