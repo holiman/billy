@@ -49,11 +49,6 @@ func newCappedFile(basename string, nFiles int, cap uint64, readonly bool) (*cap
 	}, nil
 }
 
-// Write implements io.Writer
-func (cf *cappedFile) Write(p []byte) (n int, err error) {
-	return cf.WriteAt(p, 0)
-}
-
 // WriteAt writes len(b) bytes to the file starting at byte offset off.
 // It returns the number of bytes written and an error, if any.
 // WriteAt returns a non-nil error when n != len(b).
@@ -83,11 +78,6 @@ func (cf *cappedFile) WriteAt(data []byte, off int64) (n int, err error) {
 		offset += length
 	}
 	return written, nil
-}
-
-// Read implements io.Reader
-func (cf *cappedFile) Read(p []byte) (n int, err error) {
-	return cf.ReadAt(p, 0)
 }
 
 // ReadAt reads len(b) bytes from the file(s) starting at byte offset off.
@@ -143,8 +133,11 @@ func (cf *cappedFile) Close() error {
 func (cf *cappedFile) Truncate(size int64) error {
 	var err error
 	for i, f := range cf.files {
-		// Files below the truncation limit are ignored.
+		// Files below the truncation limit are expanded to the limit.
 		if uint64(i+1)*cf.cap <= uint64(size) {
+			if e := f.Truncate(int64(cf.cap)); e != nil && err == nil {
+				err = e
+			}
 			continue
 		}
 		// Files fully above the truncation limit are truncated to zero.
@@ -163,18 +156,7 @@ func (cf *cappedFile) Truncate(size int64) error {
 	return err
 }
 
-type Sizer interface {
-	Size() int64 // length in bytes for regular files; system-dependent for others
-}
-type sizeDummy struct {
-	size int64
-}
-
-func (s *sizeDummy) Size() int64 {
-	return s.size
-}
-
-func (cf *cappedFile) Stat() (Sizer, error) {
+func (cf *cappedFile) Stat() (os.FileInfo, error) {
 	var size int64
 	var err error
 	for _, f := range cf.files {
@@ -186,6 +168,5 @@ func (cf *cappedFile) Stat() (Sizer, error) {
 			size += finfo.Size()
 		}
 	}
-	return &sizeDummy{size}, err
-
+	return &fileinfoMock{size: size}, nil
 }

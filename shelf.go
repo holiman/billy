@@ -83,17 +83,17 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 		fileSize int
 		h        = shelfHeader{Magic, curVersion, slotSize}
 		fname    = fmt.Sprintf("bkt_%08d.bag", slotSize)
-		flags    = os.O_RDWR | os.O_CREATE
 	)
-	if readonly {
-		flags = os.O_RDONLY
-	}
 	var (
 		f   store
 		err error
 	)
 	if path != "" {
-		f, err = os.OpenFile(filepath.Join(path, fname), flags, 0666)
+		// Max 5 files @ 2GB each.
+		// We also want to ensure that the cap is a multiple of the slot size, so no
+		// slot crosses a file boundary.
+		cap := uint64(2*1024*1024 - 2*1024*1024%slotSize)
+		f, err = newCappedFile(filepath.Join(path, fname), 5, cap, readonly)
 		if err != nil {
 			return nil, err
 		}
