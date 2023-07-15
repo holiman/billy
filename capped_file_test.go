@@ -6,6 +6,7 @@ package billy
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"testing"
 )
@@ -131,4 +132,32 @@ func TestReadonly(t *testing.T) {
 	if _, err := f.WriteAt([]byte("mooh"), 55); err == nil {
 		t.Fatalf("want error trying to write files in readonly, got none")
 	}
+}
+
+func TestOutOfBounds(t *testing.T) {
+	f, err := newCappedFile("multifile-ro-test", 10, 50, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		f.Close()
+		wipe(t, f)
+	})
+	// Read starting OOB
+	if _, err := f.ReadAt(make([]byte, 10), 501); !errors.Is(err, ErrBadIndex) {
+		t.Fatalf("want %v have %v", ErrBadIndex, err)
+	}
+	// Read reaching into OOB
+	if _, err := f.ReadAt(make([]byte, 10), 495); !errors.Is(err, ErrBadIndex) {
+		t.Fatalf("want %v have %v", ErrBadIndex, err)
+	}
+	// Write starting OOB
+	if _, err := f.WriteAt(make([]byte, 10), 501); !errors.Is(err, ErrBadIndex) {
+		t.Fatalf("want %v have %v", ErrBadIndex, err)
+	}
+	// Write reaching into OOB
+	if _, err := f.WriteAt(make([]byte, 10), 495); !errors.Is(err, ErrBadIndex) {
+		t.Fatalf("want %v have %v", ErrBadIndex, err)
+	}
+
 }

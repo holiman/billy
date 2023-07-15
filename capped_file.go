@@ -59,7 +59,9 @@ func (cf *cappedFile) WriteAt(data []byte, off int64) (n int, err error) {
 		totalLength = len(data)
 		fileNum     = offset / cf.cap
 	)
-	if fileNum >= uint64(len(cf.files)) {
+	// Check if the write starts or ends out of bounds
+	if fileNum >= uint64(len(cf.files)) ||
+		(offset+uint64(len(data)))/cf.cap >= uint64(len(cf.files)) {
 		return 0, ErrBadIndex
 	}
 	for ; written < totalLength; fileNum++ {
@@ -88,7 +90,9 @@ func (cf *cappedFile) ReadAt(b []byte, off int64) (n int, err error) {
 		read    int // no of bytes read
 		fileNum = offset / cf.cap
 	)
-	if fileNum >= uint64(len(cf.files)) {
+	// Check if the read starts or ends out of bounds
+	if fileNum >= uint64(len(cf.files)) ||
+		(offset+uint64(len(b)))/cf.cap >= uint64(len(cf.files)) {
 		return 0, ErrBadIndex
 	}
 	for ; read < len(b); fileNum++ {
