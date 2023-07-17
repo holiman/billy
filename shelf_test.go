@@ -36,7 +36,10 @@ func checkBlob(fill byte, blob []byte, size int) error {
 	return nil
 }
 
-func TestBasics(t *testing.T) {
+func TestBasicsInMemory(t *testing.T) { testBasics(t, "") }
+func TestBasicsOnDisk(t *testing.T)   { testBasics(t, t.TempDir()) }
+
+func testBasics(t *testing.T, path string) {
 	{ // Pre-instance failures
 		// can't open non-existing directory
 		if _, err := openShelf("/baz/bonk/foobar/gazonk", 10, nil, false); err == nil {
@@ -47,7 +50,7 @@ func TestBasics(t *testing.T) {
 			t.Fatal("expected error")
 		}
 	}
-	b, cleanup := setup(t)
+	b, cleanup := setup(t, path)
 	defer cleanup()
 	{ // Tests on Put
 		// Should reject empty data
@@ -221,9 +224,9 @@ func checkIdentical(fileA, fileB string) error {
 	return nil
 }
 
-func setup(t *testing.T) (*shelf, func()) {
+func setup(t *testing.T, path string) (*shelf, func()) {
 	t.Helper()
-	a, err := openShelf(t.TempDir(), 200, nil, false)
+	a, err := openShelf(path, 200, nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,8 +238,12 @@ func setup(t *testing.T) (*shelf, func()) {
 // TestOversized
 // - Test writing oversized data into a shelf
 // - Test writing exactly-sized data into a shelf
-func TestOversized(t *testing.T) {
-	a, cleanup := setup(t)
+
+func TestOversizedInMemory(t *testing.T) { testOversized(t, "") }
+func TestOversizedOnDisk(t *testing.T)   { testOversized(t, t.TempDir()) }
+
+func testOversized(t *testing.T, path string) {
+	a, cleanup := setup(t, path)
 	defer cleanup()
 
 	for s := 190; s < 205; s++ {
@@ -259,8 +266,12 @@ func TestOversized(t *testing.T) {
 
 // TestErrOnClose
 // - Tests reading, writing, deleting from a closed shelf
-func TestErrOnClose(t *testing.T) {
-	a, cleanup := setup(t)
+
+func TestErrOnCloseInMemory(t *testing.T) { testErrOnClose(t, "") }
+func TestErrOnCloseOnDisk(t *testing.T)   { testErrOnClose(t, t.TempDir()) }
+
+func testErrOnClose(t *testing.T, path string) {
+	a, cleanup := setup(t, path)
 	defer cleanup()
 	// Write something and delete it again, to have a gap
 	if have, want := a.count, uint64(0); have != want {
@@ -308,8 +319,11 @@ func TestErrOnClose(t *testing.T) {
 	}
 }
 
-func TestBadInput(t *testing.T) {
-	a, cleanup := setup(t)
+func TestBadInputInMemory(t *testing.T) { testBadInput(t, "") }
+func TestBadInputOnDisk(t *testing.T)   { testBadInput(t, t.TempDir()) }
+
+func testBadInput(t *testing.T, path string) {
+	a, cleanup := setup(t, path)
 	defer cleanup()
 
 	if _, err := a.Put(make([]byte, 25)); err != nil {

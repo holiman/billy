@@ -43,7 +43,7 @@ type shelf struct {
 	gapsMu sync.Mutex // Mutex for operating on 'gaps' and 'count'.
 	count  uint64     // count holds the number of items on the shelf.
 
-	f      *os.File     // f is the file where data is persisted.
+	f      store        // f is the file where data is persisted.
 	fileMu sync.RWMutex // Mutex for file operations on 'f' (rw versus Close) and closed.
 
 	closed   bool
@@ -71,10 +71,12 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 	if slotSize < minSlotSize {
 		return nil, fmt.Errorf("slot size %d smaller than minimum (%d)", slotSize, minSlotSize)
 	}
-	if finfo, err := os.Stat(path); err != nil {
-		return nil, err
-	} else if !finfo.IsDir() {
-		return nil, fmt.Errorf("not a directory: '%v'", path)
+	if path != "" { // empty path == in-memory database
+		if finfo, err := os.Stat(path); err != nil {
+			return nil, err
+		} else if !finfo.IsDir() {
+			return nil, fmt.Errorf("not a directory: '%v'", path)
+		}
 	}
 	var (
 		fileSize int
@@ -85,9 +87,17 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 	if readonly {
 		flags = os.O_RDONLY
 	}
-	f, err := os.OpenFile(filepath.Join(path, fname), flags, 0666)
-	if err != nil {
-		return nil, err
+	var (
+		f   store
+		err error
+	)
+	if path != "" {
+		f, err = os.OpenFile(filepath.Join(path, fname), flags, 0666)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		f = new(memoryStore)
 	}
 	if stat, err := f.Stat(); err != nil {
 		_ = f.Close()
