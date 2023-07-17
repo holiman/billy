@@ -5,6 +5,7 @@
 package billy
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -106,9 +107,15 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 		fileSize = int(stat.Size())
 	}
 	if fileSize == 0 {
-		err = binary.Write(f, binary.BigEndian, &h)
+		a := new(bytes.Buffer)
+		if err = binary.Write(a, binary.BigEndian, &h); err == nil {
+			_, err = f.WriteAt(a.Bytes(), 0)
+		}
 	} else {
-		err = binary.Read(f, binary.BigEndian, &h)
+		b := make([]byte, binary.Size(h))
+		if _, err = f.ReadAt(b, 0); err == nil {
+			err = binary.Read(bytes.NewReader(b), binary.BigEndian, &h)
+		}
 	}
 	if err != nil {
 		_ = f.Close()

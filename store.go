@@ -13,9 +13,7 @@ import (
 // store is an interface mimicking an os.File to allow using different storage
 // backends for different database instances.
 type store interface {
-	io.Reader
 	io.ReaderAt
-	io.Writer
 	io.WriterAt
 	io.Closer
 

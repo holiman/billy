@@ -636,7 +636,7 @@ func TestVersion(t *testing.T) {
 		},
 		{ // Too short
 			hdr:  []byte{'b'},
-			want: "unexpected EOF",
+			want: "EOF",
 		},
 	} {
 		if err := os.WriteFile(filepath.Join(p, fname), tc.hdr, 0o777); err != nil {

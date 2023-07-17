@@ -14,18 +14,7 @@ import (
 // memoryStore implements store for in-memory ephemeral data persistence.
 type memoryStore struct {
 	buffer []byte
-	offset int64
 	lock   sync.Mutex
-}
-
-// Read implements io.Reader of the store interface.
-func (ms *memoryStore) Read(p []byte) (int, error) {
-	ms.lock.Lock()
-	defer ms.lock.Unlock()
-
-	n, err := ms.readAt(p, ms.offset)
-	ms.offset += int64(n)
-	return n, err
 }
 
 // ReadAt implements io.ReaderAt of the store interface.
@@ -53,16 +42,6 @@ func (ms *memoryStore) readAt(p []byte, off int64) (int, error) {
 		fail = io.EOF
 	}
 	return read, fail
-}
-
-// Write implements io.Writer of the store interface.
-func (ms *memoryStore) Write(p []byte) (int, error) {
-	ms.lock.Lock()
-	defer ms.lock.Unlock()
-
-	n, err := ms.writeAt(p, ms.offset)
-	ms.offset += int64(n)
-	return n, err
 }
 
 // WriteAt implements io.WriterAt of the store interface.
