@@ -109,6 +109,16 @@ func TestTruncate(t *testing.T) {
 			t.Fatalf("have %d want %d", have, want)
 		}
 	}
+	// And "truncate" back up again
+	for i := 0; i < 480; i += 10 {
+		if err := f.Truncate(int64(i)); err != nil {
+			t.Fatal(err)
+		}
+		// The total size of all files should == i
+		if have, want := diskSize(t, f), i; have != want {
+			t.Fatalf("have %d want %d", have, want)
+		}
+	}
 }
 
 func TestReadonly(t *testing.T) {

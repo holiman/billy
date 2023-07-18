@@ -83,10 +83,8 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 		fileSize int
 		h        = shelfHeader{Magic, curVersion, slotSize}
 		fname    = fmt.Sprintf("bkt_%08d.bag", slotSize)
-	)
-	var (
-		f   store
-		err error
+		f        store
+		err      error
 	)
 	if path != "" {
 		// Max 5 files @ 2GB each.
