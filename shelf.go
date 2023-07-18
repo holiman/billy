@@ -5,6 +5,7 @@
 package billy
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -43,7 +44,7 @@ type shelf struct {
 	gapsMu sync.Mutex // Mutex for operating on 'gaps' and 'count'.
 	count  uint64     // count holds the number of items on the shelf.
 
-	f      *os.File     // f is the file where data is persisted.
+	f      store        // f is the file where data is persisted.
 	fileMu sync.RWMutex // Mutex for file operations on 'f' (rw versus Close) and closed.
 
 	closed   bool
@@ -71,10 +72,12 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 	if slotSize < minSlotSize {
 		return nil, fmt.Errorf("slot size %d smaller than minimum (%d)", slotSize, minSlotSize)
 	}
-	if finfo, err := os.Stat(path); err != nil {
-		return nil, err
-	} else if !finfo.IsDir() {
-		return nil, fmt.Errorf("not a directory: '%v'", path)
+	if path != "" { // empty path == in-memory database
+		if finfo, err := os.Stat(path); err != nil {
+			return nil, err
+		} else if !finfo.IsDir() {
+			return nil, fmt.Errorf("not a directory: '%v'", path)
+		}
 	}
 	var (
 		fileSize int
@@ -85,9 +88,17 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 	if readonly {
 		flags = os.O_RDONLY
 	}
-	f, err := os.OpenFile(filepath.Join(path, fname), flags, 0666)
-	if err != nil {
-		return nil, err
+	var (
+		f   store
+		err error
+	)
+	if path != "" {
+		f, err = os.OpenFile(filepath.Join(path, fname), flags, 0666)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		f = new(memoryStore)
 	}
 	if stat, err := f.Stat(); err != nil {
 		_ = f.Close()
@@ -96,9 +107,15 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 		fileSize = int(stat.Size())
 	}
 	if fileSize == 0 {
-		err = binary.Write(f, binary.BigEndian, &h)
+		a := new(bytes.Buffer)
+		if err = binary.Write(a, binary.BigEndian, &h); err == nil {
+			_, err = f.WriteAt(a.Bytes(), 0)
+		}
 	} else {
-		err = binary.Read(f, binary.BigEndian, &h)
+		b := make([]byte, binary.Size(h))
+		if _, err = f.ReadAt(b, 0); err == nil {
+			err = binary.Read(bytes.NewReader(b), binary.BigEndian, &h)
+		}
 	}
 	if err != nil {
 		_ = f.Close()
