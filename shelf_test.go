@@ -49,6 +49,10 @@ func testBasics(t *testing.T, path string) {
 		if _, err := openShelf("./README.md", 10, nil, 0, 0, false); err == nil {
 			t.Fatal("expected error")
 		}
+		// Can't provide nonzero maxfilesize but zero files
+		if _, err := openShelf("foo", 10, nil, 1, 0, false); err == nil {
+			t.Fatal("expected error")
+		}
 	}
 	b, cleanup := setup(t, path)
 	defer cleanup()
