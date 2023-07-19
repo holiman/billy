@@ -68,9 +68,12 @@ type shelfHeader struct {
 // If the shelf already exists, it's opened and read, which populates the
 // internal gap-list.
 // The onData callback is optional, and can be nil.
-func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool) (*shelf, error) {
+func openShelf(path string, slotSize uint32, onData onShelfDataFn, maxFileSize uint64, nFiles int, readonly bool) (*shelf, error) {
 	if slotSize < minSlotSize {
 		return nil, fmt.Errorf("slot size %d smaller than minimum (%d)", slotSize, minSlotSize)
+	}
+	if maxFileSize != 0 && nFiles == 0 {
+		return nil, fmt.Errorf("number of files (%d) must be non-zero if max file size (%d) set", nFiles, maxFileSize)
 	}
 	if path != "" { // empty path == in-memory database
 		if finfo, err := os.Stat(path); err != nil {
@@ -87,11 +90,7 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 		err      error
 	)
 	if path != "" {
-		// Max 5 files @ 2GB each.
-		// We also want to ensure that the cap is a multiple of the slot size, so no
-		// slot crosses a file boundary.
-		cap := uint64(2*1024*1024 - 2*1024*1024%slotSize)
-		f, err = newCappedFile(filepath.Join(path, fname), 5, cap, readonly)
+		f, err = newCappedFile(filepath.Join(path, fname), nFiles, maxFileSize, readonly)
 		if err != nil {
 			return nil, err
 		}
@@ -284,7 +283,7 @@ func (s *shelf) Get(slot uint64) ([]byte, error) {
 	}
 	data, err := s.readSlot(make([]byte, s.slotSize), slot)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadIndex, err)
+		return nil, fmt.Errorf("%w: slot %d, slotsize %d, %v", ErrBadIndex, slot, s.slotSize, err)
 	}
 	return data, nil
 }

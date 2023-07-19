@@ -23,6 +23,9 @@ func newCappedFile(basename string, nFiles int, cap uint64, readonly bool) (*cap
 	if readonly {
 		flags = os.O_RDONLY
 	}
+	if cap == 0 {
+		nFiles = 1
+	}
 	var files []*os.File
 	for i := 0; i < nFiles; i++ {
 		var (
@@ -52,63 +55,40 @@ func newCappedFile(basename string, nFiles int, cap uint64, readonly bool) (*cap
 // WriteAt writes len(b) bytes to the file starting at byte offset off.
 // It returns the number of bytes written and an error, if any.
 // WriteAt returns a non-nil error when n != len(b).
+//
+// Internally, a write will only touch one file, and may cause the cap to be exceeeded.
 func (cf *cappedFile) WriteAt(data []byte, off int64) (n int, err error) {
 	var (
-		offset      = uint64(off)
-		written     int // no of bytes read
-		totalLength = len(data)
-		fileNum     = offset / cf.cap
+		fNum    = uint64(0)
+		fOffset = off
 	)
-	// Check if the write starts or ends out of bounds
-	if fileNum >= uint64(len(cf.files)) ||
-		(offset+uint64(len(data)))/cf.cap >= uint64(len(cf.files)) {
+	if cf.cap > 0 {
+		fNum = uint64(off) / cf.cap
+		fOffset = off % int64(cf.cap)
+	}
+	// Check if the write is out of bounds
+	if fNum >= uint64(len(cf.files)) {
 		return 0, ErrBadIndex
 	}
-	for ; written < totalLength; fileNum++ {
-		offset = offset % cf.cap
-		length := uint64(len(data))
-		if offset+length > cf.cap {
-			// Write continuing in the next
-			length = cf.cap - offset
-		}
-		//fmt.Printf("WriteAt file-%d at %d <- b[:%d]\n", fileNum, offset, length)
-		if n, err := cf.files[fileNum].WriteAt(data[:length], int64(offset)); err != nil {
-			return written + n, err
-		}
-		data = data[length:]
-		written += int(length)
-		offset += length
-	}
-	return written, nil
+	return cf.files[fNum].WriteAt(data, fOffset)
 }
 
 // ReadAt reads len(b) bytes from the file(s) starting at byte offset off.
 // It returns the number of bytes read and the error, if any.
 func (cf *cappedFile) ReadAt(b []byte, off int64) (n int, err error) {
 	var (
-		offset  = uint64(off)
-		read    int // no of bytes read
-		fileNum = offset / cf.cap
+		fNum    = uint64(0)
+		fOffset = off
 	)
-	// Check if the read starts or ends out of bounds
-	if fileNum >= uint64(len(cf.files)) ||
-		(offset+uint64(len(b)))/cf.cap >= uint64(len(cf.files)) {
+	if cf.cap > 0 {
+		fNum = uint64(off) / cf.cap
+		fOffset = off % int64(cf.cap)
+	}
+	// Check if the read is out of bounds
+	if fNum >= uint64(len(cf.files)) {
 		return 0, ErrBadIndex
 	}
-	for ; read < len(b); fileNum++ {
-		offset = offset % cf.cap
-		length := uint64(len(b) - read) // no of bytes to read this iteration
-		if offset+length > cf.cap {
-			length = cf.cap - offset
-		}
-		//fmt.Printf("ReadAt  file-%d at %d -> b[%d:%d]\n", fileNum, offset, read, length)
-		if n, err := cf.files[fileNum].ReadAt(b[read:uint64(read)+length], int64(offset)); err != nil {
-			return read + n, err
-		}
-		read += int(length)
-		offset += length
-	}
-	return read, nil
+	return cf.files[fNum].ReadAt(b, fOffset)
 }
 
 // Sync calls *os.File Sync on the backing-files.
@@ -135,6 +115,9 @@ func (cf *cappedFile) Close() error {
 
 // Truncate changes the size of the file.
 func (cf *cappedFile) Truncate(size int64) error {
+	if cf.cap == 0 {
+		return cf.files[0].Truncate(size)
+	}
 	var err error
 	for i, f := range cf.files {
 		// Files below the truncation limit are expanded to the limit.

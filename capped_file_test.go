@@ -7,6 +7,7 @@ package billy
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"testing"
 )
@@ -67,13 +68,26 @@ func TestWriteAt(t *testing.T) {
 	}
 
 	{
-		// Test data that starts at one file, fully saturates a second, and
-		// ends a bit into the third.
+		// Test data that starts at one file, and severely exceeds the cap.
 		want := []byte("miao01234567890123456789012345678901234567890123456789woof")
 		if _, err := f.WriteAt(want, 96); err != nil {
 			t.Fatal(err)
 		}
 		have := make([]byte, 58)
+		if _, err := f.ReadAt(have, 96); err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(have, want) {
+			t.Fatalf("have %x want %x", have, want)
+		}
+		// We can now do a 'small write' into the second file, which should not
+		// 'disturb' the data in the first file. This is an implementation
+		// quirk, not a "desired feature", but still should be checked by tests.
+		if _, err := f.WriteAt(make([]byte, 50), 100); err != nil {
+			t.Fatal(err)
+		}
+		// Check original data in first file
+		have = make([]byte, 58)
 		if _, err := f.ReadAt(have, 96); err != nil {
 			t.Fatal(err)
 		}
@@ -158,16 +172,15 @@ func TestOutOfBounds(t *testing.T) {
 		t.Fatalf("want %v have %v", ErrBadIndex, err)
 	}
 	// Read reaching into OOB
-	if _, err := f.ReadAt(make([]byte, 10), 495); !errors.Is(err, ErrBadIndex) {
+	if _, err := f.ReadAt(make([]byte, 10), 495); !errors.Is(err, io.EOF) {
 		t.Fatalf("want %v have %v", ErrBadIndex, err)
 	}
 	// Write starting OOB
 	if _, err := f.WriteAt(make([]byte, 10), 501); !errors.Is(err, ErrBadIndex) {
 		t.Fatalf("want %v have %v", ErrBadIndex, err)
 	}
-	// Write reaching into OOB
-	if _, err := f.WriteAt(make([]byte, 10), 495); !errors.Is(err, ErrBadIndex) {
-		t.Fatalf("want %v have %v", ErrBadIndex, err)
+	// Write exceeding the global cap (not enforced)
+	if _, err := f.WriteAt(make([]byte, 10), 495); err != nil {
+		t.Fatal(err)
 	}
-
 }
