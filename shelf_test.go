@@ -655,3 +655,48 @@ func TestVersion(t *testing.T) {
 		}
 	}
 }
+
+func TestCappedTruncate(t *testing.T) {
+	p := t.TempDir()
+
+	// Max file size 100
+	// Max files 5, total capacity 100
+	// SHelf size 27 + 4 = 31
+	s, err := openShelf(p, 27+itemHeaderSize, nil, 100, 5, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Fill up the capped files and delete an item to trigger a truncation
+	var keys []uint64
+	for i := byte(1); i <= 10; i++ {
+		if key, err := s.Put(bytes.Repeat([]byte{i}, 27)); err != nil {
+			t.Fatalf("failed to put item %d: %v", i, err)
+		} else {
+			keys = append(keys, key)
+		}
+	}
+	err = s.Delete(keys[len(keys)-1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys = keys[:len(keys)-1]
+	fmt.Printf("There are %d elements\n", len(keys))
+	// Reopen the shelf to compact it
+	s.Close()
+	s, err = openShelf(p, 27+itemHeaderSize, nil, 100, 5, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Verify that all values survived compactions
+	for i, key := range keys {
+		val, err := s.Get(key)
+		if err != nil {
+			t.Errorf("failed to retrieve slot %d: %v", i, err)
+			continue
+		}
+		want := bytes.Repeat([]byte{byte(i + 1)}, 27)
+		if !bytes.Equal(val, want) {
+			t.Errorf("item %d mismatch: have %x, want %x", i, val, want)
+		}
+	}
+}

@@ -70,6 +70,7 @@ func (cf *cappedFile) WriteAt(data []byte, off int64) (n int, err error) {
 	if fNum >= uint64(len(cf.files)) {
 		return 0, ErrBadIndex
 	}
+	//fmt.Printf("file-%d, write %d bytes @ %d (total offset %d)\n", fNum, len(data), fOffset, off)
 	return cf.files[fNum].WriteAt(data, fOffset)
 }
 
@@ -122,9 +123,9 @@ func (cf *cappedFile) Truncate(size int64) error {
 	for i, f := range cf.files {
 		// Files below the truncation limit are expanded to the limit.
 		if uint64(i+1)*cf.cap <= uint64(size) {
-			if e := f.Truncate(int64(cf.cap)); e != nil && err == nil {
-				err = e
-			}
+			//if e := f.Truncate(int64(cf.cap)); e != nil && err == nil {
+			//	err = e
+			//}
 			continue
 		}
 		// Files fully above the truncation limit are truncated to zero.
@@ -152,7 +153,16 @@ func (cf *cappedFile) Stat() (os.FileInfo, error) {
 			err = e
 		}
 		if finfo != nil {
-			size += finfo.Size()
+			// If a file exceeds the cap, then the next file will contain a
+			// corresponding empty-data section in the beginning. Therefore,
+			// we must not count that twice. Easiest to just count to the cap.
+			// This is a bit hacky, and would be more correct if we also
+			// ensure that the 'next' file is non-empty.
+			a := finfo.Size()
+			if a > int64(cf.cap) {
+				a = int64(cf.cap)
+			}
+			size += a
 		}
 	}
 	return &fileinfoMock{size: size}, nil
