@@ -3,7 +3,6 @@ package main
 import (
 	crand "crypto/rand"
 	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"math/rand"
 	"os"
@@ -68,18 +67,17 @@ func doOpenDb(ctx *cli.Context, onData billy.OnDataFn) (billy.Database, error) {
 
 func doFuzz(ctx *cli.Context) error {
 	var (
-		hasher = sha256.New()
 		hashes = make(map[uint64]string)
 		onData = func(key uint64, size uint32, data []byte) {
 			if verbose {
 				fmt.Printf("init key %x val %x\n", key, data[:20])
 			}
-			hasher.Reset()
-			hashes[key] = hex.EncodeToString(hasher.Sum(data))
+			hashes[key] = fmt.Sprintf("%x", sha256.Sum256(data))
 		}
 		db, err = doOpenDb(ctx, onData)
 	)
 	if err != nil {
+		fmt.Printf("Error opening db: %v\n", err)
 		return err
 	}
 	var (
@@ -109,8 +107,7 @@ func doFuzz(ctx *cli.Context) error {
 			l := int(min) + rand.Intn(int(max-min))
 			data := make([]byte, l)
 			_, _ = crand.Read(data)
-			hasher.Reset()
-			sum := hex.EncodeToString(hasher.Sum(data))
+			sum := fmt.Sprintf("%x", sha256.Sum256(data))
 			key, err := db.Put(data)
 			if err != nil {
 				panic(err)
@@ -126,19 +123,23 @@ func doFuzz(ctx *cli.Context) error {
 			for key, want = range hashes {
 				break
 			}
-			//fmt.Printf("Checking %d bytes data at key %d\n", len(want), key)
 			data, err := db.Get(key)
 			if err != nil {
+				fmt.Printf("Checking data at key %d\n", key)
 				panic(err)
 			}
 			// check the data
-			hasher.Reset()
-			have := hex.EncodeToString(hasher.Sum(data))
+			have := fmt.Sprintf("%x", sha256.Sum256(data))
 			if have != want {
-				panic(fmt.Sprintf("key %v\nhave %v\n, want %v\n", key, have, want))
+				fmt.Printf("key %v\nhave %d bytes, hash %v\n, want %v\n", key,
+					len(data), have, want)
+				panic("GET failure")
 			}
 		case 2: // DELETE
 			var key uint64
+			if len(hashes) == 0 {
+				continue
+			}
 			for key = range hashes {
 				break
 			}

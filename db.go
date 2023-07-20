@@ -86,9 +86,20 @@ type database struct {
 }
 
 type Options struct {
-	Path     string
+	// Path is the path to where the billy-files are stored. An empty value
+	// means 'memory-mode', in which nothing is stored to disk.
+	Path string
+	// ShelfFileSize is the maximum size of files used. A value of zero means that
+	// there is no maximum.
+	ShelfFileSize uint64
+	// ShelfFileCount is the amount of files to open for each shelf. The total
+	// storage capacity of any shelf is thus `ShelfFileSize * ShelfFileCount`.
+	// If `ShelfFileSize==0`, then this value is not used.
+	ShelfFileCount int
+	// Readonly means that the db cannot be used for writing.
 	Readonly bool
-	Snappy   bool // unused for now
+	// Snappy is not used
+	Snappy bool
 }
 
 // Open opens a (new or existing) database, with configurable limits. The given
@@ -113,7 +124,8 @@ func Open(opts Options, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error
 			return nil, fmt.Errorf("slot sizes must be in increasing order")
 		}
 		prevSlotSize = slotSize
-		shelf, err := openShelf(opts.Path, slotSize, wrapShelfDataFn(len(db.shelves), slotSize, onData), opts.Readonly)
+		shelf, err := openShelf(opts.Path, slotSize, wrapShelfDataFn(len(db.shelves), slotSize, onData),
+			opts.ShelfFileSize, opts.ShelfFileCount, opts.Readonly)
 		if err != nil {
 			db.Close() // Close shelves
 			return nil, err

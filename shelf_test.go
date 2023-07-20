@@ -42,11 +42,15 @@ func TestBasicsOnDisk(t *testing.T)   { testBasics(t, t.TempDir()) }
 func testBasics(t *testing.T, path string) {
 	{ // Pre-instance failures
 		// can't open non-existing directory
-		if _, err := openShelf("/baz/bonk/foobar/gazonk", 10, nil, false); err == nil {
+		if _, err := openShelf("/baz/bonk/foobar/gazonk", 10, nil, 0, 0, false); err == nil {
 			t.Fatal("expected error")
 		}
 		// Can't point path to a file
-		if _, err := openShelf("./README.md", 10, nil, false); err == nil {
+		if _, err := openShelf("./README.md", 10, nil, 0, 0, false); err == nil {
+			t.Fatal("expected error")
+		}
+		// Can't provide nonzero maxfilesize but zero files
+		if _, err := openShelf("foo", 10, nil, 1, 0, false); err == nil {
 			t.Fatal("expected error")
 		}
 	}
@@ -226,7 +230,7 @@ func checkIdentical(fileA, fileB string) error {
 
 func setup(t *testing.T, path string) (*shelf, func()) {
 	t.Helper()
-	a, err := openShelf(path, 200, nil, false)
+	a, err := openShelf(path, 200, nil, 0, 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,12 +383,12 @@ func TestCompaction(t *testing.T) {
 		haveOnData = append(haveOnData, data[0])
 	}
 	/// Now open them as shelves
-	a, err = openShelf(pA, 10, onData, false)
+	a, err = openShelf(pA, 10, onData, 0, 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	a.Close()
-	b, err = openShelf(pB, 10, nil, false)
+	b, err = openShelf(pB, 10, nil, 0, 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,7 +442,7 @@ func TestCompaction2(t *testing.T) {
 	p := t.TempDir()
 	/// Now open them as shelves
 	openAndStore := func(data string) {
-		a, err := openShelf(p, 10, nil, false)
+		a, err := openShelf(p, 10, nil, 0, 0, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -453,14 +457,14 @@ func TestCompaction2(t *testing.T) {
 		var data []byte
 		_, err := openShelf(p, 10, func(slot uint64, x []byte) {
 			data = append(data, x...)
-		}, false)
+		}, 0, 0, false)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return string(data)
 	}
 	openAndDel := func(deletes ...int) {
-		a, err := openShelf(p, 10, nil, false)
+		a, err := openShelf(p, 10, nil, 0, 0, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -496,7 +500,7 @@ func TestCompaction2(t *testing.T) {
 func TestShelfRO(t *testing.T) {
 	p := t.TempDir()
 
-	a, err := openShelf(p, 20, nil, false)
+	a, err := openShelf(p, 20, nil, 0, 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -526,7 +530,7 @@ func TestShelfRO(t *testing.T) {
 	out := new(strings.Builder)
 	a, err = openShelf(p, 20, func(slot uint64, data []byte) {
 		fmt.Fprintf(out, "%d:%d, ", slot, len(data))
-	}, true)
+	}, 0, 0, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -554,7 +558,7 @@ func TestShelfRO(t *testing.T) {
 	out = new(strings.Builder)
 	a, err = openShelf(p, 20, func(slot uint64, data []byte) {
 		fmt.Fprintf(out, "%d:%d, ", slot, len(data))
-	}, false)
+	}, 0, 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -570,7 +574,7 @@ func TestShelfRO(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	p := t.TempDir()
-	a, err := openShelf(p, 20, nil, false)
+	a, err := openShelf(p, 20, nil, 0, 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -642,12 +646,56 @@ func TestVersion(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(p, fname), tc.hdr, 0o777); err != nil {
 			t.Fatal(err)
 		}
-		_, err := openShelf(p, size, nil, false)
+		_, err := openShelf(p, size, nil, 0, 0, false)
 		if err == nil {
 			t.Fatal("expected error")
 		}
 		if have := err.Error(); have != tc.want {
 			t.Fatalf("test %d: wrong error, have '%v' want '%v'", i, have, tc.want)
+		}
+	}
+}
+
+func TestCappedTruncate(t *testing.T) {
+	p := t.TempDir()
+
+	// Max file size 100
+	// Max files 5, total capacity 100
+	// SHelf size 27 + 4 = 31
+	s, err := openShelf(p, 27+itemHeaderSize, nil, 100, 5, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Fill up the capped files and delete an item to trigger a truncation
+	var keys []uint64
+	for i := byte(1); i <= 10; i++ {
+		if key, err := s.Put(bytes.Repeat([]byte{i}, 27)); err != nil {
+			t.Fatalf("failed to put item %d: %v", i, err)
+		} else {
+			keys = append(keys, key)
+		}
+	}
+	err = s.Delete(keys[len(keys)-1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys = keys[:len(keys)-1]
+	// Reopen the shelf to compact it
+	s.Close()
+	s, err = openShelf(p, 27+itemHeaderSize, nil, 100, 5, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Verify that all values survived compactions
+	for i, key := range keys {
+		val, err := s.Get(key)
+		if err != nil {
+			t.Errorf("failed to retrieve slot %d: %v", i, err)
+			continue
+		}
+		want := bytes.Repeat([]byte{byte(i + 1)}, 27)
+		if !bytes.Equal(val, want) {
+			t.Errorf("item %d mismatch: have %x, want %x", i, val, want)
 		}
 	}
 }

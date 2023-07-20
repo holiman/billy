@@ -68,9 +68,12 @@ type shelfHeader struct {
 // If the shelf already exists, it's opened and read, which populates the
 // internal gap-list.
 // The onData callback is optional, and can be nil.
-func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool) (*shelf, error) {
+func openShelf(path string, slotSize uint32, onData onShelfDataFn, maxFileSize uint64, nFiles int, readonly bool) (*shelf, error) {
 	if slotSize < minSlotSize {
 		return nil, fmt.Errorf("slot size %d smaller than minimum (%d)", slotSize, minSlotSize)
+	}
+	if maxFileSize != 0 && nFiles == 0 {
+		return nil, fmt.Errorf("number of files (%d) must be non-zero if max file size (%d) set", nFiles, maxFileSize)
 	}
 	if path != "" { // empty path == in-memory database
 		if finfo, err := os.Stat(path); err != nil {
@@ -83,17 +86,11 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 		fileSize int
 		h        = shelfHeader{Magic, curVersion, slotSize}
 		fname    = fmt.Sprintf("bkt_%08d.bag", slotSize)
-		flags    = os.O_RDWR | os.O_CREATE
-	)
-	if readonly {
-		flags = os.O_RDONLY
-	}
-	var (
-		f   store
-		err error
+		f        store
+		err      error
 	)
 	if path != "" {
-		f, err = os.OpenFile(filepath.Join(path, fname), flags, 0666)
+		f, err = newCappedFile(filepath.Join(path, fname), nFiles, maxFileSize, readonly)
 		if err != nil {
 			return nil, err
 		}
@@ -286,7 +283,7 @@ func (s *shelf) Get(slot uint64) ([]byte, error) {
 	}
 	data, err := s.readSlot(make([]byte, s.slotSize), slot)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadIndex, err)
+		return nil, fmt.Errorf("%w: slot %d, slotsize %d, %v", ErrBadIndex, slot, s.slotSize, err)
 	}
 	return data, nil
 }
