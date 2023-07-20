@@ -119,51 +119,53 @@ func (cf *cappedFile) Truncate(size int64) error {
 	if cf.cap == 0 {
 		return cf.files[0].Truncate(size)
 	}
-	var err error
-	for i, f := range cf.files {
-		// Files below the truncation limit are expanded to the limit.
-		if uint64(i+1)*cf.cap <= uint64(size) {
-			//if e := f.Truncate(int64(cf.cap)); e != nil && err == nil {
-			//	err = e
-			//}
-			continue
-		}
-		// Files fully above the truncation limit are truncated to zero.
-		if uint64(i)*cf.cap > uint64(size) {
-			if e := f.Truncate(0); e != nil && err == nil {
-				err = e
-			}
-			continue
-		}
-		fSize := size % int64(cf.cap)
-		//fmt.Printf("Truncate file-%d to %d (total size %d)\n", i, fSize, size)
-		if e := f.Truncate(fSize); e != nil && err == nil {
-			err = e
+	// Files fully below the truncation limit are left in place. This is subtly
+	// wrong: the os.File Stat() operation _expands_ a file if it is too small,
+	// so ideally we should maybe "truncate up" the files in passing.
+	// However, it's possible that the files have exceeded the capcacity,
+	// and we must not truncate them.
+
+	i := int(uint64(size) / cf.cap)
+	//fmt.Printf("Truncate file-%d to %d (total size %d)\n", i, size%int64(cf.cap), size)
+	if err := cf.files[i].Truncate(size % int64(cf.cap)); err != nil {
+		return err
+	}
+	// Files fully above the truncation limit are truncated to zero.
+	for i++; i < len(cf.files); i++ {
+		//fmt.Printf("Truncate file-%d to 0\n", i)
+		if err := cf.files[i].Truncate(0); err != nil {
+			return err
 		}
 	}
-	return err
+	return nil
 }
 
 func (cf *cappedFile) Stat() (os.FileInfo, error) {
 	var size int64
 	var err error
+	var uncounted int64
 	for _, f := range cf.files {
 		finfo, e := f.Stat()
-		if e != nil && err != nil {
-			err = e
-		}
-		if finfo != nil {
-			// If a file exceeds the cap, then the next file will contain a
-			// corresponding empty-data section in the beginning. Therefore,
-			// we must not count that twice. Easiest to just count to the cap.
-			// This is a bit hacky, and would be more correct if we also
-			// ensure that the 'next' file is non-empty.
-			a := finfo.Size()
-			if a > int64(cf.cap) {
-				a = int64(cf.cap)
+		if e != nil {
+			if err != nil {
+				err = e
 			}
-			size += a
+			continue
+		}
+		s := finfo.Size()
+		if s == 0 {
+			size += uncounted
+			break
+		}
+		if cf.cap == 0 || s < int64(cf.cap) {
+			// File is not at capacity. No need to continue.
+			size += s
+			break
+		} else {
+			// File is at or over capacity. Add cf.cap bytes, and remember the overflow
+			size += int64(cf.cap)
+			uncounted = s - int64(cf.cap)
 		}
 	}
-	return &fileinfoMock{size: size}, nil
+	return &fileinfoMock{size: size}, err
 }

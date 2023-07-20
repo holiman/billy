@@ -680,7 +680,6 @@ func TestCappedTruncate(t *testing.T) {
 		t.Fatal(err)
 	}
 	keys = keys[:len(keys)-1]
-	fmt.Printf("There are %d elements\n", len(keys))
 	// Reopen the shelf to compact it
 	s.Close()
 	s, err = openShelf(p, 27+itemHeaderSize, nil, 100, 5, false)

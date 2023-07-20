@@ -107,8 +107,10 @@ func TestTruncate(t *testing.T) {
 	}
 	t.Cleanup(func() { wipe(t, f) })
 	// Fill with data
-	if _, err := f.WriteAt(make([]byte, 470), 20); err != nil {
-		t.Fatal(err)
+	for i := 0; i < 47; i++ {
+		if _, err := f.WriteAt(make([]byte, 10), int64(20+i*10)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// The total size of all files should == 490
 	if have, want := diskSize(t, f), 490; have != want {
@@ -124,15 +126,16 @@ func TestTruncate(t *testing.T) {
 		}
 	}
 	// And "truncate" back up again
-	for i := 0; i < 480; i += 10 {
-		if err := f.Truncate(int64(i)); err != nil {
-			t.Fatal(err)
-		}
-		// The total size of all files should == i
-		if have, want := diskSize(t, f), i; have != want {
-			t.Fatalf("have %d want %d", have, want)
-		}
-	}
+	// NO longer supported
+	//for i := 0; i < 480; i += 10 {
+	//	if err := f.Truncate(int64(i)); err != nil {
+	//		t.Fatal(err)
+	//	}
+	//	// The total size of all files should == i
+	//	if have, want := diskSize(t, f), i; have != want {
+	//		t.Fatalf("have %d want %d", have, want)
+	//	}
+	//}
 }
 
 func TestReadonly(t *testing.T) {
