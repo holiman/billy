@@ -143,7 +143,6 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 		if !readonly && repair {
 			fileSize -= extra
 			dataSize -= extra
-
 			err = f.Truncate(int64(fileSize))
 		} else {
 			err = fmt.Errorf("content truncated, size:%d, slot:%d", dataSize, slotSize)
@@ -318,8 +317,8 @@ func (s *shelf) readSlot(buf []byte, slot uint64) ([]byte, error) {
 	if _, err := s.f.ReadAt(buf, int64(ShelfHeaderSize)+int64(slot)*int64(s.slotSize)); err != nil {
 		return nil, err
 	}
-	size := binary.BigEndian.Uint32(buf) + itemHeaderSize
-	if size > uint32(s.slotSize) {
+	size := uint64(binary.BigEndian.Uint32(buf)) + itemHeaderSize
+	if size > uint64(s.slotSize) {
 		return nil, fmt.Errorf("%w: item size %d, slot size %d", ErrCorruptData, size, s.slotSize)
 	}
 	return buf[itemHeaderSize:size], nil

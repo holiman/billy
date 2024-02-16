@@ -657,28 +657,37 @@ func TestVersion(t *testing.T) {
 	}
 }
 
-func FuzzShelfContents(f *testing.F) {
-	f.Fuzz(func(t *testing.T, content []byte) {
-		// Create a valid shelf, we only fuzz the contents, not the magic
-		path := t.TempDir()
-		file := filepath.Join(path, fmt.Sprintf("bkt_%08d.bag", 100))
-		head := []byte{'b', 'i', 'l', 'l', 'y', 0x00, 0x00, 0x00, 0x00, 0x00, 100}
+func fuzzShelf(t *testing.T, content []byte) {
+	// Create a valid shelf, we only fuzz the contents, not the magic
+	path := t.TempDir()
+	file := filepath.Join(path, fmt.Sprintf("bkt_%08d.bag", 100))
+	head := []byte{'b', 'i', 'l', 'l', 'y', 0x00, 0x00, 0x00, 0x00, 0x00, 100}
 
-		// Append the fuzz content to the shelf
-		blob := append(head, content...)
-		if err := os.WriteFile(file, blob, 0o777); err != nil {
-			t.Fatal(err)
-		}
-		// Try to open the shelf and verify the errors
-		shelf, err := openShelf(path, 100, nil, false, false)
-		if err == nil {
-			shelf.Close()
-			return
-		}
-		shelf, err = openShelf(path, 100, nil, false, true)
-		if err != nil {
-			t.Fatalf("failed to recover shelf: %v", err)
-		}
+	// Append the fuzz content to the shelf
+	blob := append(head, content...)
+	if err := os.WriteFile(file, blob, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	// Try to open the shelf and verify the errors
+	shelf, err := openShelf(path, 100, nil, false, false)
+	if err == nil {
 		shelf.Close()
-	})
+		return
+	}
+	shelf, err = openShelf(path, 100, nil, false, true)
+	if err != nil {
+		t.Fatalf("failed to recover shelf: %v", err)
+	}
+	shelf.Close()
+}
+
+// This test contains a fuzzer-finding which triggered an overflow-to-zero when
+// itemHeaderSize and an items-reported-size were added.
+func TestShelfContents(t *testing.T) {
+	data := []byte("\xff\xff\xff\xfc000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")
+	fuzzShelf(t, data)
+}
+
+func FuzzShelfContents(f *testing.F) {
+	f.Fuzz(fuzzShelf)
 }
