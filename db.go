@@ -88,6 +88,7 @@ type database struct {
 type Options struct {
 	Path     string
 	Readonly bool
+	Repair   bool
 	Snappy   bool // unused for now
 }
 
@@ -123,7 +124,7 @@ func Open(opts Options, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error
 		}
 	}
 	for _, slotSize = range slotSizes {
-		shelf, err := openShelf(opts.Path, slotSize, wrapShelfDataFn(len(db.shelves), slotSize, onData), opts.Readonly)
+		shelf, err := openShelf(opts.Path, slotSize, wrapShelfDataFn(len(db.shelves), slotSize, onData), opts.Readonly, opts.Repair)
 		if err != nil {
 			db.Close() // Close shelves
 			return nil, err

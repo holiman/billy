@@ -42,11 +42,11 @@ func TestBasicsOnDisk(t *testing.T)   { testBasics(t, t.TempDir()) }
 func testBasics(t *testing.T, path string) {
 	{ // Pre-instance failures
 		// can't open non-existing directory
-		if _, err := openShelf("/baz/bonk/foobar/gazonk", 10, nil, false); err == nil {
+		if _, err := openShelf("/baz/bonk/foobar/gazonk", 10, nil, false, false); err == nil {
 			t.Fatal("expected error")
 		}
 		// Can't point path to a file
-		if _, err := openShelf("./README.md", 10, nil, false); err == nil {
+		if _, err := openShelf("./README.md", 10, nil, false, false); err == nil {
 			t.Fatal("expected error")
 		}
 	}
@@ -226,7 +226,7 @@ func checkIdentical(fileA, fileB string) error {
 
 func setup(t *testing.T, path string) (*shelf, func()) {
 	t.Helper()
-	a, err := openShelf(path, 200, nil, false)
+	a, err := openShelf(path, 200, nil, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -379,12 +379,12 @@ func TestCompaction(t *testing.T) {
 		haveOnData = append(haveOnData, data[0])
 	}
 	/// Now open them as shelves
-	a, err = openShelf(pA, 10, onData, false)
+	a, err = openShelf(pA, 10, onData, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	a.Close()
-	b, err = openShelf(pB, 10, nil, false)
+	b, err = openShelf(pB, 10, nil, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,7 +438,7 @@ func TestCompaction2(t *testing.T) {
 	p := t.TempDir()
 	/// Now open them as shelves
 	openAndStore := func(data string) {
-		a, err := openShelf(p, 10, nil, false)
+		a, err := openShelf(p, 10, nil, false, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -453,14 +453,14 @@ func TestCompaction2(t *testing.T) {
 		var data []byte
 		_, err := openShelf(p, 10, func(slot uint64, x []byte) {
 			data = append(data, x...)
-		}, false)
+		}, false, false)
 		if err != nil {
 			t.Fatal(err)
 		}
 		return string(data)
 	}
 	openAndDel := func(deletes ...int) {
-		a, err := openShelf(p, 10, nil, false)
+		a, err := openShelf(p, 10, nil, false, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -496,7 +496,7 @@ func TestCompaction2(t *testing.T) {
 func TestShelfRO(t *testing.T) {
 	p := t.TempDir()
 
-	a, err := openShelf(p, 20, nil, false)
+	a, err := openShelf(p, 20, nil, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -526,7 +526,7 @@ func TestShelfRO(t *testing.T) {
 	out := new(strings.Builder)
 	a, err = openShelf(p, 20, func(slot uint64, data []byte) {
 		fmt.Fprintf(out, "%d:%d, ", slot, len(data))
-	}, true)
+	}, true, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -554,7 +554,7 @@ func TestShelfRO(t *testing.T) {
 	out = new(strings.Builder)
 	a, err = openShelf(p, 20, func(slot uint64, data []byte) {
 		fmt.Fprintf(out, "%d:%d, ", slot, len(data))
-	}, false)
+	}, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -570,7 +570,7 @@ func TestShelfRO(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	p := t.TempDir()
-	a, err := openShelf(p, 20, nil, false)
+	a, err := openShelf(p, 20, nil, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -646,7 +646,7 @@ func TestVersion(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(p, fname), tc.hdr, 0o777); err != nil {
 			t.Fatal(err)
 		}
-		_, err := openShelf(p, size, nil, false)
+		_, err := openShelf(p, size, nil, false, false)
 		if err == nil {
 			if tc.want != "" {
 				t.Fatal("expected error")
@@ -655,4 +655,30 @@ func TestVersion(t *testing.T) {
 			t.Fatalf("test %d: wrong error, have '%v' want '%v'", i, have, tc.want)
 		}
 	}
+}
+
+func FuzzShelfContents(f *testing.F) {
+	f.Fuzz(func(t *testing.T, content []byte) {
+		// Create a valid shelf, we only fuzz the contents, not the magic
+		path := t.TempDir()
+		file := filepath.Join(path, fmt.Sprintf("bkt_%08d.bag", 100))
+		head := []byte{'b', 'i', 'l', 'l', 'y', 0x00, 0x00, 0x00, 0x00, 0x00, 100}
+
+		// Append the fuzz content to the shelf
+		blob := append(head, content...)
+		if err := os.WriteFile(file, blob, 0o777); err != nil {
+			t.Fatal(err)
+		}
+		// Try to open the shelf and verify the errors
+		shelf, err := openShelf(path, 100, nil, false, false)
+		if err == nil {
+			shelf.Close()
+			return
+		}
+		shelf, err = openShelf(path, 100, nil, false, true)
+		if err != nil {
+			t.Fatalf("failed to recover shef: %v", err)
+		}
+		shelf.Close()
+	})
 }
