@@ -91,6 +91,7 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 	var (
 		f   store
 		err error
+		n   int
 	)
 	if path != "" {
 		f, err = os.OpenFile(filepath.Join(path, fname), flags, 0666)
@@ -108,12 +109,15 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 	}
 	if fileSize == 0 {
 		a := new(bytes.Buffer)
-		if err = binary.Write(a, binary.BigEndian, &h); err == nil {
-			_, err = f.WriteAt(a.Bytes(), 0)
+		if err = binary.Write(a, binary.BigEndian, &h); err != nil {
+			panic(err) // Cannot fail unless 'a' is changed to reject writes or 'h' is changed to be unmarshallable
+		}
+		if _, err = f.WriteAt(a.Bytes(), 0); err == nil {
+			err = f.Sync()
 		}
 	} else {
 		b := make([]byte, binary.Size(h))
-		if _, err = f.ReadAt(b, 0); err == nil {
+		if n, err = f.ReadAt(b, 0); n == len(b) {
 			err = binary.Read(bytes.NewReader(b), binary.BigEndian, &h)
 		}
 	}

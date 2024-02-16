@@ -638,15 +638,20 @@ func TestVersion(t *testing.T) {
 			hdr:  []byte{'b'},
 			want: "EOF",
 		},
+		{ // Correct magic, empty shelf
+			hdr:  []byte{'b', 'i', 'l', 'l', 'y', 0x00, 0x00, 0x00, 0x00, 0x00, 100},
+			want: "",
+		},
 	} {
 		if err := os.WriteFile(filepath.Join(p, fname), tc.hdr, 0o777); err != nil {
 			t.Fatal(err)
 		}
 		_, err := openShelf(p, size, nil, false)
 		if err == nil {
-			t.Fatal("expected error")
-		}
-		if have := err.Error(); have != tc.want {
+			if tc.want != "" {
+				t.Fatal("expected error")
+			}
+		} else if have := err.Error(); have != tc.want {
 			t.Fatalf("test %d: wrong error, have '%v' want '%v'", i, have, tc.want)
 		}
 	}
