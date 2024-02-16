@@ -68,7 +68,7 @@ type shelfHeader struct {
 // If the shelf already exists, it's opened and read, which populates the
 // internal gap-list.
 // The onData callback is optional, and can be nil.
-func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool) (*shelf, error) {
+func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool, repair bool) (*shelf, error) {
 	if slotSize < minSlotSize {
 		return nil, fmt.Errorf("slot size %d smaller than minimum (%d)", slotSize, minSlotSize)
 	}
@@ -115,6 +115,7 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 		if _, err = f.WriteAt(a.Bytes(), 0); err == nil {
 			err = f.Sync()
 		}
+		fileSize = len(a.Bytes())
 	} else {
 		b := make([]byte, binary.Size(h))
 		if n, err = f.ReadAt(b, 0); n == len(b) {
@@ -137,18 +138,29 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 		_ = f.Close()
 		return nil, err
 	}
-	dataSize := fileSize
-	if fileSize >= int(ShelfHeaderSize) {
-		dataSize = fileSize - int(ShelfHeaderSize)
+	dataSize := fileSize - ShelfHeaderSize
+	if extra := dataSize % int(slotSize); extra != 0 {
+		if !readonly && repair {
+			fileSize -= extra
+			dataSize -= extra
+
+			err = f.Truncate(int64(fileSize))
+		} else {
+			err = fmt.Errorf("content truncated, size:%d, slot:%d", dataSize, slotSize)
+		}
+	}
+	if err != nil {
+		_ = f.Close()
+		return nil, err
 	}
 	sh := &shelf{
 		slotSize: slotSize,
-		count:    uint64((dataSize + int(slotSize) - 1) / int(slotSize)),
+		count:    uint64(dataSize / int(slotSize)),
 		f:        f,
 		readonly: readonly,
 	}
 	// Compact + iterate
-	if err := sh.compact(onData); err != nil {
+	if err := sh.compact(onData, repair); err != nil {
 		_ = f.Close()
 		return nil, err
 	}
@@ -383,7 +395,7 @@ func (s *shelf) Iterate(onData onShelfDataFn) error {
 
 // compact moves data 'up' to fill gaps, and truncates the file afterwards.
 // This operation must only be performed during the opening of the shelf.
-func (s *shelf) compact(onData onShelfDataFn) error {
+func (s *shelf) compact(onData onShelfDataFn, repair bool) error {
 	s.gapsMu.Lock()
 	defer s.gapsMu.Unlock()
 	s.fileMu.RLock()
@@ -396,6 +408,9 @@ func (s *shelf) compact(onData onShelfDataFn) error {
 		for ; slot < s.count; slot++ {
 			data, err := s.readSlot(buf, slot)
 			if err != nil {
+				if errors.Is(err, ErrCorruptData) && !s.readonly && repair { // Repair corruption by dropping it
+					break
+				}
 				return 0, err
 			}
 			if len(data) == 0 { // We've found a gap
@@ -413,7 +428,9 @@ func (s *shelf) compact(onData onShelfDataFn) error {
 		for ; slot > gap && slot > 0; slot-- {
 			data, err := s.readSlot(buf, slot)
 			if err != nil {
-				return 0, err
+				if !errors.Is(err, ErrCorruptData) || s.readonly || !repair { // Only error if it's not a corruption being repaired
+					return 0, err
+				}
 			}
 			if len(data) != 0 {
 				// We've found a slot of data. Copy it to the gap
