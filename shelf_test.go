@@ -677,7 +677,7 @@ func FuzzShelfContents(f *testing.F) {
 		}
 		shelf, err = openShelf(path, 100, nil, false, true)
 		if err != nil {
-			t.Fatalf("failed to recover shef: %v", err)
+			t.Fatalf("failed to recover shelf: %v", err)
 		}
 		shelf.Close()
 	})
