@@ -141,10 +141,10 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 	dataSize := fileSize - ShelfHeaderSize
 	if extra := dataSize % int(slotSize); extra != 0 {
 		if !readonly && repair {
-			if err = f.Truncate(int64(fileSize - extra)); err == nil {
-				fileSize -= extra
-				dataSize -= extra
-			}
+			fileSize -= extra
+			dataSize -= extra
+
+			err = f.Truncate(int64(fileSize))
 		} else {
 			err = fmt.Errorf("content truncated, size:%d, slot:%d", dataSize, slotSize)
 		}
