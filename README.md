@@ -76,7 +76,7 @@ Saying that we can't do compaction is not strictly true: there are two things th
    we always prefer writing to lower gaps, leaving the higher gaps for later. 
 - Compact-on-open
   - Compact-on-open uses the fact that before the external calles is notified about the data content, we have the freedom to reorder the data, and uses this 
-  period overwrite any gaps and truncate the underlying file. 
+  period to overwrite any gaps and truncate the underlying file. 
 
 
 ### Data format
