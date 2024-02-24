@@ -47,7 +47,7 @@ For the [proposal by @karalabe](https://gist.github.com/karalabe/821a1cd0270984a
 we have very special circumstances: 
 
 - The disk-backed storage is indeed backed by an in-memory structure of metadata. 
-- The payloads will roughly equally heavy on `write`, `delete` and `read` operations.
+- The payloads will be roughly equally heavy on `write`, `delete` and `read` operations.
 - The data is somewhat transient, meaning that it's expected that the mean-storage time for a piece of data
  is measured in minutes rather than weeks. 
  
