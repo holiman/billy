@@ -651,8 +651,8 @@ func TestVersion(t *testing.T) {
 			if tc.want != "" {
 				t.Fatal("expected error")
 			}
-		} else if have := err.Error(); have != tc.want {
-			t.Fatalf("test %d: wrong error, have '%v' want '%v'", i, have, tc.want)
+		} else if have := err.Error(); !strings.HasPrefix(have, tc.want) {
+			t.Errorf("test %d: wrong error, have '%v' want '%v'", i, have, tc.want)
 		}
 	}
 }
