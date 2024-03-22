@@ -89,16 +89,18 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 		flags = os.O_RDONLY
 	}
 	var (
-		f   store
-		err error
-		n   int
+		f        store
+		err      error
+		n        int
+		fileName = filepath.Join(path, fname)
 	)
 	if path != "" {
-		f, err = os.OpenFile(filepath.Join(path, fname), flags, 0666)
+		f, err = os.OpenFile(fileName, flags, 0666)
 		if err != nil {
 			return nil, err
 		}
 	} else {
+		fileName = "<memmoryfile>"
 		f = new(memoryStore)
 	}
 	if stat, err := f.Stat(); err != nil {
@@ -124,7 +126,7 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 	}
 	if err != nil {
 		_ = f.Close()
-		return nil, err
+		return nil, fmt.Errorf("%w, file %v", err, fileName)
 	}
 	switch {
 	case h.Magic != Magic:
@@ -136,7 +138,7 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 	}
 	if err != nil {
 		_ = f.Close()
-		return nil, err
+		return nil, fmt.Errorf("%w, file %v", err, fileName)
 	}
 	dataSize := fileSize - ShelfHeaderSize
 	if extra := dataSize % int(slotSize); extra != 0 {
@@ -150,7 +152,7 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 	}
 	if err != nil {
 		_ = f.Close()
-		return nil, err
+		return nil, fmt.Errorf("%w, file %v", err, fileName)
 	}
 	sh := &shelf{
 		slotSize: slotSize,
@@ -161,7 +163,7 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 	// Compact + iterate
 	if err := sh.compact(onData, repair); err != nil {
 		_ = f.Close()
-		return nil, err
+		return nil, fmt.Errorf("%w, file %v", err, fileName)
 	}
 	return sh, nil
 }
