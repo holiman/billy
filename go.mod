@@ -1,4 +1,4 @@
-module github.com/holiman/billy
+module github.com/ethstorage/billy
 
 go 1.18
 

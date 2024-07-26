@@ -308,6 +308,20 @@ func (s *shelf) Get(slot uint64) ([]byte, error) {
 	return data, nil
 }
 
+func (s *shelf) GetSample(slot, off, length uint64) ([]byte, error) {
+	// Read-lock to prevent file from being closed while reading from it
+	s.fileMu.RLock()
+	defer s.fileMu.RUnlock()
+	if s.closed {
+		return nil, ErrClosed
+	}
+	buf := make([]byte, length)
+	if _, err := s.f.ReadAt(buf, int64(ShelfHeaderSize)+int64(slot)*int64(s.slotSize)+int64(off)); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrBadIndex, err)
+	}
+	return buf, nil
+}
+
 // readSlot is a convenience function to the data from a slot.
 // It
 //   - expects the given 'buf' to be correctly sized (len = s.slotSize),

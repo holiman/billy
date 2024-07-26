@@ -22,6 +22,11 @@ type Database interface {
 	// Get retrieves the data stored at the given key.
 	Get(key uint64) ([]byte, error)
 
+	// GetSample retrieves a portion of the data stored at the given key.
+	// The offset and length are in bytes, and the data returned is a sub-slice
+	// of the original data.
+	GetSample(key, off, length uint64) ([]byte, error)
+
 	// Delete marks the data for deletion, which means it will (eventually) be
 	// overwritten by other data. After calling Delete with a given key, the results
 	// from doing Get(key) is undefined -- it may return the same data, or some other
@@ -161,6 +166,20 @@ func (db *database) Get(key uint64) ([]byte, error) {
 	id := int(key>>28) & 0xfff
 	return db.shelves[id].Get(key & 0x0FFFFFFF)
 }
+
+// GetSample retrieves a portion of the data stored at the given key.
+// The offset and length are in bytes, and the data returned is a sub-slice
+// of the original data.
+// If the requested range is out of bounds, an error is returned.
+// The data is copied by the database, and is safe to modify after the method returns
+//
+// The key is assumed to be one returned by Put or Iterate (potentially on Open).
+func (db *database) GetSample(key, off, length uint64) ([]byte, error) {
+	id := int(key>>28) & 0xfff
+	return db.shelves[id].GetSample(key&0x0FFFFFFF, off, length)
+}
+
+// Infos retrieves various internal statistics about the database.
 
 // Delete marks the data for deletion, which means it will (eventually) be
 // overwritten by other data. After calling Delete with a given key, the results
