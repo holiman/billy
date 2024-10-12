@@ -17,15 +17,16 @@ commands:
             go env
             go test -v -coverprofile=coverage-<<parameters.arch>>.txt -covermode=count ./...
 
+# Test the oldest version and the most recent, no need to test all in between
 jobs:
-  go120:
+  go_latest:
     docker:
-      - image: cimg/go:1.20
+      - image: cimg/go:1.23
     steps:
       - run:
           name: "Install tools"
           command: |
-            curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.51.1
+            curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.61.0
       - checkout
       - run:
           name: "Lint"
@@ -41,7 +42,7 @@ jobs:
           name: "Codecov upload"
           command: bash <(curl -s https://codecov.io/bash)
 
-  go119:
+  go_oldest:
     docker:
       - image: cimg/go:1.19
     steps:
@@ -52,5 +53,5 @@ workflows:
   version: 2
   billy:
     jobs:
-      - go120
-      - go119
+      - go_latest
+      - go_oldest
