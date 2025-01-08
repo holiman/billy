@@ -33,6 +33,10 @@ var (
 		Usage: "Max element size",
 		Value: 1024 * 1024,
 	}
+	sizesFlag = &cli.IntSliceFlag{
+		Name:  "sizes",
+		Usage: "Slot sizes (alternative to min/max)",
+	}
 	putCommand = &cli.Command{
 		Action:      put,
 		Name:        "put",
@@ -89,6 +93,7 @@ func main() {
 		pathFlag,
 		minFlag,
 		maxFlag,
+		sizesFlag,
 	}
 	if err := app.Run(os.Args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -97,23 +102,29 @@ func main() {
 }
 
 type dbParams struct {
-	path string
-	min  uint32
-	max  uint32
+	path  string
+	sizes billy.SlotSizeFn
 }
 
 func openDb(ctx *cli.Context) (billy.Database, *dbParams, error) {
+	sizeFn := billy.SlotSizePowerOfTwo(uint32(ctx.Int("min")), uint32(ctx.Int("max")))
+	if sizes := ctx.IntSlice("sizes"); len(sizes) != 0 {
+		i := 0
+		sizeFn = func() (uint32, bool) {
+			i++
+			return uint32(sizes[i-1]), i >= len(sizes)
+		}
+	}
 	opts := &dbParams{
-		path: ctx.String("path"),
-		min:  uint32(ctx.Int("min")),
-		max:  uint32(ctx.Int("max")),
+		path:  ctx.String("path"),
+		sizes: sizeFn,
 	}
 	db, err := doOpenDb(opts)
 	return db, opts, err
 }
 
 func doOpenDb(opts *dbParams) (billy.Database, error) {
-	db, err := billy.Open(billy.Options{Path: opts.path}, billy.SlotSizePowerOfTwo(opts.min, opts.max), func(key uint64, size uint32, data []byte) {
+	db, err := billy.Open(billy.Options{Path: opts.path}, opts.sizes, func(key uint64, size uint32, data []byte) {
 		var d string
 		if len(data) > 100 {
 			d = fmt.Sprintf("%q...", data[:100])
