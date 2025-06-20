@@ -134,6 +134,37 @@ func Open(opts Options, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error
 	return db, nil
 }
 
+// RemoveShelves removes all shelves created by slotSizeFn.
+func RemoveShelves(opts Options, slotSizeFn SlotSizeFn) error {
+	var (
+		prevSlotSize uint32
+		prevId       int
+		slotSize     uint32
+		slotSizes    []uint32
+		done         bool
+	)
+	for !done {
+		slotSize, done = slotSizeFn()
+		if slotSize <= prevSlotSize {
+			return fmt.Errorf("slot sizes must be in increasing order")
+		}
+		prevSlotSize = slotSize
+
+		slotSizes = append(slotSizes, slotSize)
+		if id := len(slotSizes) & 0xfff; id < prevId {
+			return fmt.Errorf("too many shelves (%d)", len(slotSizes))
+		} else {
+			prevId = id
+		}
+	}
+	for _, slotSize = range slotSizes {
+		if err := removeShelf(opts.Path, slotSize); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // Put stores the data to the underlying database, and returns the key needed
 // for later accessing the data.
 // The data is copied by the database, and is safe to modify after the method returns

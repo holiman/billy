@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -295,6 +296,42 @@ func TestSizes(t *testing.T) {
 		t.Fatalf("Expected empty db, key %d", key)
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRemoveShelves(t *testing.T) {
+	path := t.TempDir()
+	stat := func() error {
+		slotter := SlotSizePowerOfTwo(8, 16)
+		for {
+			slot, done := slotter()
+			fname := fmt.Sprintf("bkt_%08d.bag", slot)
+			fileName := filepath.Join(path, fname)
+			if _, err := os.Stat(fileName); err != nil {
+				return err
+			}
+			if done {
+				return nil
+			}
+		}
+	}
+
+	db, err := Open(Options{Path: path}, SlotSizePowerOfTwo(8, 16), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	// Check that the shelves are written.
+	if err := stat(); err != nil {
+		t.Fatal(err)
+	}
+	// Remove the shelves
+	if err := RemoveShelves(Options{Path: path}, SlotSizePowerOfTwo(8, 16)); err != nil {
+		t.Fatal(err)
+	}
+	// Check that the shelves are removed.
+	if err := stat(); err == nil {
 		t.Fatal(err)
 	}
 }

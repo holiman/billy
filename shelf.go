@@ -168,6 +168,26 @@ func openShelf(path string, slotSize uint32, onData onShelfDataFn, readonly bool
 	return sh, nil
 }
 
+// removeShelf removes a shelf if it exists.
+func removeShelf(path string, slotSize uint32) error {
+	if path == "" {
+		// empty path == in-memory database
+		// do not remove any files
+		return nil
+	}
+	// make sure path is a directory
+	if finfo, err := os.Stat(path); err != nil {
+		return err
+	} else if !finfo.IsDir() {
+		return fmt.Errorf("not a directory: '%v'", path)
+	}
+	var (
+		fname    = fmt.Sprintf("bkt_%08d.bag", slotSize)
+		fileName = filepath.Join(path, fname)
+	)
+	return os.Remove(fileName)
+}
+
 func (s *shelf) Close() error {
 	// We don't need the gapsMu until later, but order matters: all places
 	// which require both mutexes first obtain gapsMu, and _then_ fileMu.
