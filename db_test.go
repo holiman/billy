@@ -300,7 +300,7 @@ func TestSizes(t *testing.T) {
 	}
 }
 
-func TestRemoveShelves(t *testing.T) {
+func TestMigrate(t *testing.T) {
 	path := t.TempDir()
 	stat := func() error {
 		slotter := SlotSizePowerOfTwo(8, 16)
@@ -327,7 +327,7 @@ func TestRemoveShelves(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Remove the shelves
-	if err := RemoveShelves(Options{Path: path}, SlotSizePowerOfTwo(8, 16)); err != nil {
+	if err := Migrate(Options{Path: path}, SlotSizePowerOfTwo(8, 16), SlotSizePowerOfTwo(16, 32)); err != nil {
 		t.Fatal(err)
 	}
 	// Check that the shelves are removed.
