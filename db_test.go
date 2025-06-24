@@ -302,8 +302,7 @@ func TestSizes(t *testing.T) {
 
 func TestMigrate(t *testing.T) {
 	path := t.TempDir()
-	stat := func() error {
-		slotter := SlotSizePowerOfTwo(8, 16)
+	stat := func(slotter SlotSizeFn) error {
 		for {
 			slot, done := slotter()
 			fname := fmt.Sprintf("bkt_%08d.bag", slot)
@@ -317,21 +316,47 @@ func TestMigrate(t *testing.T) {
 		}
 	}
 
+	count := func(slotter SlotSizeFn) uint64 {
+		var cnt uint64
+		count := func(key uint64, size uint32, data []byte) {
+			cnt++
+		}
+		db, err := Open(Options{Path: path}, slotter, count)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+		return cnt
+	}
+
 	db, err := Open(Options{Path: path}, SlotSizePowerOfTwo(8, 16), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Fill up 10 elements
+	for i := 0; i < 10; i++ {
+		db.Put(make([]byte, i))
+	}
 	db.Close()
 	// Check that the shelves are written.
-	if err := stat(); err != nil {
+	if err := stat(SlotSizePowerOfTwo(8, 16)); err != nil {
 		t.Fatal(err)
 	}
+
+	want := count(SlotSizePowerOfTwo(8, 16))
 	// Remove the shelves
 	if err := Migrate(Options{Path: path}, SlotSizePowerOfTwo(8, 16), SlotSizePowerOfTwo(16, 32)); err != nil {
 		t.Fatal(err)
 	}
 	// Check that the shelves are removed.
-	if err := stat(); err == nil {
+	if err := stat(SlotSizePowerOfTwo(8, 16)); err == nil {
 		t.Fatal(err)
+	}
+	// And that the new ones are added.
+	if err := stat(SlotSizePowerOfTwo(16, 32)); err != nil {
+		t.Fatal(err)
+	}
+	if have := count(SlotSizePowerOfTwo(16, 32)); have != want {
+		t.Fatal(have, want)
 	}
 }
