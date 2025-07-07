@@ -231,7 +231,7 @@ func setup(t *testing.T, path string) (*shelf, func()) {
 		t.Fatal(err)
 	}
 	return a, func() {
-		a.Close()
+		_ = a.Close()
 	}
 }
 
@@ -383,12 +383,12 @@ func TestCompaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.Close()
+	_ = a.Close()
 	b, err = openShelf(pB, 10, nil, false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b.Close()
+	_ = b.Close()
 	if err := checkIdentical(
 		filepath.Join(pA, "bkt_00000010.bag"),
 		filepath.Join(pB, "bkt_00000010.bag")); err != nil {
@@ -671,14 +671,17 @@ func fuzzShelf(t *testing.T, content []byte) {
 	// Try to open the shelf and verify the errors
 	shelf, err := openShelf(path, 100, nil, false, false)
 	if err == nil {
-		shelf.Close()
+		err = shelf.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
 		return
 	}
 	shelf, err = openShelf(path, 100, nil, false, true)
 	if err != nil {
 		t.Fatalf("failed to recover shelf: %v", err)
 	}
-	shelf.Close()
+	_ = shelf.Close()
 }
 
 // This test contains a fuzzer-finding which triggered an overflow-to-zero when

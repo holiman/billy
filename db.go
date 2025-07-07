@@ -110,7 +110,7 @@ func Open(opts Options, slotSizeFn SlotSizeFn, onData OnDataFn) (Database, error
 	for _, slotSize := range slotSizes {
 		shelf, err := openShelf(opts.Path, slotSize, wrapShelfDataFn(len(db.shelves), slotSize, onData), opts.Readonly, opts.Repair)
 		if err != nil {
-			db.Close() // Close shelves
+			_ = db.Close() // Close shelves
 			return nil, err
 		}
 		db.shelves = append(db.shelves, shelf)
@@ -160,7 +160,7 @@ func Migrate(opts Options, old, new SlotSizeFn) error {
 	for _, slotSize := range newSlotSizes {
 		shelf, err := openShelf(opts.Path, slotSize, wrapShelfDataFn(len(newDB.shelves), slotSize, nil), opts.Readonly, opts.Repair)
 		if err != nil {
-			newDB.Close() // Close shelves
+			_ = newDB.Close() // Close shelves
 			return err
 		}
 		newDB.shelves = append(newDB.shelves, shelf)

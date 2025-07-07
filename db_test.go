@@ -20,8 +20,10 @@ func TestGrowFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(filename)
-	defer f.Close()
+	defer func() {
+		_ = os.Remove(filename)
+		_ = f.Close()
+	}()
 
 	if _, err := f.Seek(55, 0); err != nil {
 		t.Fatal(err)
@@ -42,8 +44,10 @@ func TestGrowFile2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(filename)
-	defer f.Close()
+	defer func() {
+		_ = os.Remove(filename)
+		_ = f.Close()
+	}()
 
 	if _, err := f.WriteAt([]byte("test"), 55); err != nil {
 		t.Fatal(err)
@@ -318,7 +322,7 @@ func TestMigrate(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		db.Close()
+		_ = db.Close()
 		return cnt
 	}
 	db, err := Open(Options{Path: path}, SlotSizePowerOfTwo(8, 16), nil)
@@ -332,7 +336,7 @@ func TestMigrate(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	db.Close()
+	_ = db.Close()
 	want := count(SlotSizePowerOfTwo(8, 16))
 	if want != uint64(nElems) {
 		t.Fatalf("want %d elements, have %d", nElems, want)
