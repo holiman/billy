@@ -53,7 +53,7 @@ we have very special circumstances:
  
  ## Implementation
  
- The `bagdb` uses has the following API:
+ `billy` has the following API:
  
  - `Put(data []byte) uint64`. This operation stores the given `data`, and returns a 'direct' reference to where the data is stored. By 'direct', it means that there is no 
  indirection involved, the returned `key` is a direct reference to the `shelf` and `slot` where the data can later be found. 
