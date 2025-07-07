@@ -1,4 +1,4 @@
-// bagdb: Simple datastorage
+// billy: Simple datastorage
 // Copyright 2021 billy authors
 // SPDX-License-Identifier: BSD-3-Clause
 
@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -19,8 +20,10 @@ func TestGrowFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(filename)
-	defer f.Close()
+	defer func() {
+		_ = os.Remove(filename)
+		_ = f.Close()
+	}()
 
 	if _, err := f.Seek(55, 0); err != nil {
 		t.Fatal(err)
@@ -41,8 +44,10 @@ func TestGrowFile2(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(filename)
-	defer f.Close()
+	defer func() {
+		_ = os.Remove(filename)
+		_ = f.Close()
+	}()
 
 	if _, err := f.WriteAt([]byte("test"), 55); err != nil {
 		t.Fatal(err)
@@ -296,5 +301,55 @@ func TestSizes(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMigrate(t *testing.T) {
+	path := t.TempDir()
+	slotExists := func(slot int) bool {
+		fname := fmt.Sprintf("bkt_%08d.bag", slot)
+		if _, err := os.Stat(filepath.Join(path, fname)); err != nil {
+			return false
+		}
+		return true
+	}
+	count := func(slotter SlotSizeFn) uint64 {
+		var cnt uint64
+		db, err := Open(Options{Path: path}, slotter,
+			func(key uint64, size uint32, data []byte) {
+				cnt++
+			})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = db.Close()
+		return cnt
+	}
+	db, err := Open(Options{Path: path}, SlotSizePowerOfTwo(8, 16), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Fill up elements
+	var nElems = 10
+	for i := 0; i < nElems; i++ {
+		if _, err := db.Put(make([]byte, 1+i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = db.Close()
+	want := count(SlotSizePowerOfTwo(8, 16))
+	if want != uint64(nElems) {
+		t.Fatalf("want %d elements, have %d", nElems, want)
+	}
+	// Remove the shelves
+	if err := Migrate(Options{Path: path}, SlotSizePowerOfTwo(8, 16), SlotSizePowerOfTwo(16, 32)); err != nil {
+		t.Fatal(err)
+	}
+	// Check that the shelves are removed.
+	if slotExists(8) {
+		t.Fatalf("expected slot to be removed")
+	}
+	if have := count(SlotSizePowerOfTwo(16, 32)); have != want {
+		t.Fatal(have, want)
 	}
 }

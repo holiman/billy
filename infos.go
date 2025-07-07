@@ -1,4 +1,4 @@
-// bagdb: Simple datastorage
+// billy: Simple datastorage
 // Copyright 2023 billy authors
 // SPDX-License-Identifier: BSD-3-Clause
 

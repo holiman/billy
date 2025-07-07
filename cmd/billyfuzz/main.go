@@ -155,15 +155,13 @@ func doFuzz(ctx *cli.Context) error {
 		select {
 		case <-abortChan:
 			fmt.Fprintf(os.Stderr, "Aborted, shutting down\n")
-			db.Close()
-			return nil
+			return db.Close()
 		case <-timeout.C:
 			fmt.Fprintf(os.Stderr, "Timeout, shutting down\n")
-			db.Close()
-			return nil
+			return db.Close()
 		case <-stopper.C:
 			fmt.Fprintf(os.Stderr, "Reopening db, ops %d, keys %d\n", ops, len(hashes))
-			db.Close()
+			_ = db.Close()
 			for k := range hashes {
 				delete(hashes, k)
 			}

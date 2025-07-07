@@ -159,7 +159,7 @@ func doPut(ctx *cli.Context, data []byte) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	_, max := db.Limits()
 	if len(data) == 0 {
 		return fmt.Errorf("data missing")
@@ -197,7 +197,7 @@ func doGet(ctx *cli.Context, outputFn func([]byte) error) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	key := ctx.Args().First()
 	k, ok := big.NewInt(0).SetString(key, 0)
 	if !ok {
@@ -219,7 +219,7 @@ func del(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	key := ctx.Args().First()
 	k, ok := big.NewInt(0).SetString(key, 0)
 	if !ok {
@@ -236,7 +236,10 @@ func startIpc(endpoint string) (net.Listener, error) {
 	if err := os.MkdirAll(filepath.Dir(endpoint), 0750); err != nil {
 		return nil, err
 	}
-	os.Remove(endpoint)
+	err := os.Remove(endpoint)
+	if err != nil {
+		return nil, err
+	}
 	l, err := net.Listen("unix", endpoint)
 	if err != nil {
 		return nil, err
@@ -271,7 +274,7 @@ func serveCodec(conn net.Conn, db billy.Database, opts *dbParams) {
 				continue
 			}
 			id, _ := db.Put(data)
-			_, _ = conn.Write([]byte(fmt.Sprintf("%#08x\n", id)))
+			_, _ = fmt.Fprintf(conn, "%#08x\n", id)
 		case "GET ":
 			k, ok := big.NewInt(0).SetString(string(line[4:]), 0)
 			if !ok {
@@ -304,7 +307,7 @@ func serveCodec(conn net.Conn, db billy.Database, opts *dbParams) {
 			_ = db.Delete(k.Uint64())
 		case "RST ":
 			// Restart it
-			db.Close()
+			_ = db.Close()
 			var err error
 			db, err = doOpenDb(opts)
 			if err != nil {
@@ -322,14 +325,14 @@ func open(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	endpoint := filepath.Join(ctx.String("path"), "billy.ipc")
 	l, err := startIpc(endpoint)
 	if err != nil {
 		return err
 	}
 	defer func() {
-		os.Remove(endpoint)
+		_ = os.Remove(endpoint)
 	}()
 	go func(l net.Listener, db billy.Database, opts *dbParams) {
 		// ServeListener accepts connections on l, serving JSON-RPC on them.
