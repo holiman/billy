@@ -27,7 +27,7 @@ A 'proper' database is very complex, and has to solve several difficult problems
   
 ### What if? 
 
-But what if we don't need to maintain an index? There are two obvious cavats here: 
+But what if we don't need to maintain an index? There are two obvious caveats here: 
 
 - Without an index, we cannot move the data around after it's written. Compaction will not be possible. This can lead to 
 fragmentation; where inserts/deletes fragments the buffer space, caused by differently-sized data-chunks, eventually deteriorating 
