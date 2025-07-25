@@ -5,6 +5,7 @@
 package billy
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -166,9 +167,12 @@ func Migrate(opts Options, old, new SlotSizeFn) error {
 		newDB.shelves = append(newDB.shelves, shelf)
 	}
 
-	var indexingErr error
+	var errs []error
 	migrateData := func(key uint64, size uint32, data []byte) {
-		_, indexingErr = newDB.Put(data)
+		_, err := newDB.Put(data)
+		if err != nil {
+			errs = append(errs, err)
+		}
 	}
 	for idx, slotSize := range oldSlotSizes {
 		if slices.Contains(newSlotSizes, slotSize) {
@@ -179,8 +183,8 @@ func Migrate(opts Options, old, new SlotSizeFn) error {
 		if err != nil {
 			return err
 		}
-		if indexingErr != nil {
-			return err
+		if len(errs) > 0 {
+			return errors.Join(errs...)
 		}
 		if err := shelf.Close(); err != nil {
 			return err
